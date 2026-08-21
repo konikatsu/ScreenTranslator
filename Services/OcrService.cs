@@ -176,12 +176,13 @@ public class OcrService : IDisposable
 
     private Bitmap PreprocessImage(Bitmap src)
     {
-        float scale = 2.5f;
+        float scale = 3.0f;
         int newWidth = (int)(src.Width * scale);
         int newHeight = (int)(src.Height * scale);
 
-        var result = new Bitmap(newWidth, newHeight, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(result))
+        // Step 1: Upscale with high quality interpolation
+        var upscaled = new Bitmap(newWidth, newHeight, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(upscaled))
         {
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             g.SmoothingMode = SmoothingMode.HighQuality;
@@ -190,6 +191,23 @@ public class OcrService : IDisposable
             g.DrawImage(src, 0, 0, newWidth, newHeight);
         }
 
+        // Step 2: Convert to high-contrast grayscale (black text on white background)
+        // This dramatically improves OCR accuracy for UI elements
+        var result = new Bitmap(newWidth, newHeight, PixelFormat.Format32bppArgb);
+        for (int y = 0; y < newHeight; y++)
+        {
+            for (int x = 0; x < newWidth; x++)
+            {
+                Color pixel = upscaled.GetPixel(x, y);
+                // Weighted grayscale (luminance)
+                int gray = (int)(0.299 * pixel.R + 0.587 * pixel.G + 0.114 * pixel.B);
+                // Apply threshold for high contrast: dark text becomes black, light bg becomes white
+                int bw = gray < 160 ? 0 : 255;
+                result.SetPixel(x, y, Color.FromArgb(255, bw, bw, bw));
+            }
+        }
+
+        upscaled.Dispose();
         return result;
     }
 
