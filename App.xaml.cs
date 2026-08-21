@@ -76,6 +76,9 @@ public partial class App : Application
         _notifyIcon.ShowBalloonTip(3000, "Screen Translator", "起動しました！「Alt + Q」またはアイコンクリックで翻訳を開始できます。", ToolTipIcon.Info);
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+    extern static bool DestroyIcon(IntPtr handle);
+
     private Icon CreateAppIcon()
     {
         // Programmatically generate a crisp 32x32 icon with a translation logo
@@ -98,7 +101,10 @@ public partial class App : Application
         g.DrawString("訳", font, textBrush, new RectangleF(0, 0, 32, 32), format);
 
         var hIcon = bitmap.GetHicon();
-        return Icon.FromHandle(hIcon);
+        using var tempIcon = Icon.FromHandle(hIcon);
+        var finalIcon = (Icon)tempIcon.Clone();
+        DestroyIcon(hIcon);
+        return finalIcon;
     }
 
     private void OnHotkeyPressed()

@@ -172,36 +172,39 @@ public class OcrService : IDisposable
         });
     }
 
-    private async Task<string> TryWindowsOcrAsync(Bitmap bitmap)
+    private Task<string> TryWindowsOcrAsync(Bitmap bitmap)
     {
-        try
+        return Task.Run(async () =>
         {
-            using var processedBitmap = PreprocessImage(bitmap);
-            using var ms = new MemoryStream();
-            processedBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
-            ms.Position = 0;
-
-            var randomAccessStream = ms.AsRandomAccessStream();
-            var decoder = await BitmapDecoder.CreateAsync(randomAccessStream);
-            using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
-                BitmapPixelFormat.Bgra8,
-                BitmapAlphaMode.Premultiplied
-            );
-
-            var ocrResult = await _winOcrEngine!.RecognizeAsync(softwareBitmap);
-
-            var sb = new StringBuilder();
-            foreach (var line in ocrResult.Lines)
+            try
             {
-                sb.AppendLine(line.Text);
-            }
+                using var processedBitmap = PreprocessImage(bitmap);
+                using var ms = new MemoryStream();
+                processedBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
+                ms.Position = 0;
 
-            return CleanOcrOutput(sb.ToString());
-        }
-        catch
-        {
-            return string.Empty;
-        }
+                using var randomAccessStream = ms.AsRandomAccessStream();
+                var decoder = await BitmapDecoder.CreateAsync(randomAccessStream);
+                using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
+                    BitmapPixelFormat.Bgra8,
+                    BitmapAlphaMode.Premultiplied
+                );
+
+                var ocrResult = await _winOcrEngine!.RecognizeAsync(softwareBitmap);
+
+                var sb = new StringBuilder();
+                foreach (var line in ocrResult.Lines)
+                {
+                    sb.AppendLine(line.Text);
+                }
+
+                return CleanOcrOutput(sb.ToString());
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        });
     }
 
     /// <summary>

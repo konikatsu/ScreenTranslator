@@ -95,8 +95,8 @@ public partial class OverlayWindow : Window
                 // Hide overlay immediately so it won't be captured
                 Hide();
 
-                // Non-blocking async delay to ensure overlay is fully unrendered before screenshot
-                await Task.Delay(60);
+                // Non-blocking wait for WPF render thread to guarantee overlay is visually gone
+                await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Render);
 
                 var bitmap = new Bitmap(physW, physH, PixelFormat.Format32bppArgb);
                 using (var g = Graphics.FromImage(bitmap))
