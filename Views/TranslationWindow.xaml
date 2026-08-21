@@ -12,7 +12,8 @@
         MaxWidth="480"
         MinHeight="100"
         MaxHeight="400"
-        Deactivated="Window_Deactivated">
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        KeyDown="Window_KeyDown">
     <Window.Resources>
         <DropShadowEffect x:Key="CardShadow"
                           BlurRadius="20"

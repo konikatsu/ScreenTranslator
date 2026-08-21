@@ -191,19 +191,37 @@ public class OcrService : IDisposable
             g.DrawImage(src, 0, 0, newWidth, newHeight);
         }
 
-        // Step 2: Convert to high-contrast grayscale (black text on white background)
-        // This dramatically improves OCR accuracy for UI elements
-        var result = new Bitmap(newWidth, newHeight, PixelFormat.Format32bppArgb);
+        // Step 2: Convert to grayscale and auto-detect dark/light mode
+        long totalBrightness = 0;
+        var grayValues = new byte[newWidth * newHeight];
+
         for (int y = 0; y < newHeight; y++)
         {
             for (int x = 0; x < newWidth; x++)
             {
                 Color pixel = upscaled.GetPixel(x, y);
-                // Weighted grayscale (luminance)
                 int gray = (int)(0.299 * pixel.R + 0.587 * pixel.G + 0.114 * pixel.B);
-                // Apply threshold for high contrast: dark text becomes black, light bg becomes white
-                int bw = gray < 160 ? 0 : 255;
-                result.SetPixel(x, y, Color.FromArgb(255, bw, bw, bw));
+                grayValues[y * newWidth + x] = (byte)gray;
+                totalBrightness += gray;
+            }
+        }
+
+        long totalPixels = (long)newWidth * newHeight;
+        double avgBrightness = totalBrightness / (double)totalPixels;
+        bool isDarkMode = avgBrightness < 128;
+
+        // Step 3: Create output - grayscale, inverted if dark mode (OCR needs dark text on light bg)
+        var result = new Bitmap(newWidth, newHeight, PixelFormat.Format32bppArgb);
+        for (int y = 0; y < newHeight; y++)
+        {
+            for (int x = 0; x < newWidth; x++)
+            {
+                int gray = grayValues[y * newWidth + x];
+                if (isDarkMode)
+                {
+                    gray = 255 - gray; // Invert: light text on dark bg → dark text on light bg
+                }
+                result.SetPixel(x, y, Color.FromArgb(255, gray, gray, gray));
             }
         }
 

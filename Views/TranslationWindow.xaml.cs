@@ -1,6 +1,6 @@
 using System;
 using System.Windows;
-using System.Windows.Forms;
+using System.Windows.Input;
 using Clipboard = System.Windows.Clipboard;
 
 namespace ScreenTranslator.Views;
@@ -50,6 +50,24 @@ public partial class TranslationWindow : Window
         Activate();
     }
 
+    // Enable drag to move the window
+    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left)
+        {
+            DragMove();
+        }
+    }
+
+    // Close on Escape key
+    private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+        }
+    }
+
     private void BtnCopy_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -67,11 +85,6 @@ public partial class TranslationWindow : Window
     }
 
     private void BtnClose_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
-    }
-
-    private void Window_Deactivated(object sender, EventArgs e)
     {
         Close();
     }
