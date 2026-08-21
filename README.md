@@ -10,6 +10,14 @@ A lightweight, resident Windows desktop tool for instant screen OCR and translat
 
 ---
 
+## 📸 スクリーンショット (Screenshot)
+
+![Screen Translator Screenshot](docs/screenshot.png)
+
+> **💡 ショートカットキー `Alt + Q` で画面を囲むだけで、英語のUIや設定画面をその場で瞬時に日本語翻訳してポップアップ表示します。**
+
+---
+
 ## ✨ 主な機能 (Features)
 
 * **⚡ グローバルショートカット (`Alt + Q`)**
