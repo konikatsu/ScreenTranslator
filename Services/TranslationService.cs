@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -16,16 +18,42 @@ public class TranslationService
     }
 
     /// <summary>
-    /// Translates text from English (or auto-detected source) to Japanese using Google Translate Web API.
+    /// Translates text from English to Japanese using Google Translate Web API.
+    /// Preserves multi-line structure for clean menu and list translations.
     /// </summary>
     public async Task<string> TranslateToJapaneseAsync(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
 
+        var lines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (lines.Length <= 1)
+        {
+            return await TranslateSingleBlockAsync(text.Trim());
+        }
+
+        // Translate each line to keep UI menu lines accurate
+        var translatedLines = new List<string>();
+        foreach (var line in lines)
+        {
+            string trimmed = line.Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed))
+            {
+                string trans = await TranslateSingleBlockAsync(trimmed);
+                translatedLines.Add(trans);
+            }
+        }
+
+        return string.Join(Environment.NewLine, translatedLines);
+    }
+
+    private async Task<string> TranslateSingleBlockAsync(string text)
+    {
         try
         {
-            string url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ja&dt=t&q={Uri.EscapeDataString(text)}";
+            // Explicitly set source as English (sl=en) to prevent false Japanese detection
+            string url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ja&dt=t&q={Uri.EscapeDataString(text)}";
             string response = await _httpClient.GetStringAsync(url);
 
             using var doc = JsonDocument.Parse(response);
@@ -44,14 +72,29 @@ public class TranslationService
                     }
                 }
 
-                return translatedBuilder.ToString();
+                string result = translatedBuilder.ToString();
+                return string.IsNullOrWhiteSpace(result) ? text : result;
             }
 
-            return "翻訳結果を取得できませんでした。";
+            return text;
         }
-        catch (Exception ex)
+        catch
         {
-            return $"翻訳エラー: {ex.Message}";
+            // Fallback with auto-detect if sl=en fails
+            try
+            {
+                string fallbackUrl = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ja&dt=t&q={Uri.EscapeDataString(text)}";
+                string fbResponse = await _httpClient.GetStringAsync(fallbackUrl);
+                using var fbDoc = JsonDocument.Parse(fbResponse);
+                var fbRoot = fbDoc.RootElement;
+                if (fbRoot.ValueKind == JsonValueKind.Array && fbRoot.GetArrayLength() > 0)
+                {
+                    return fbRoot[0][0][0].GetString() ?? text;
+                }
+            }
+            catch {}
+
+            return text;
         }
     }
 }
