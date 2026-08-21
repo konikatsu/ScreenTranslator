@@ -5,6 +5,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Tesseract;
 using Windows.Graphics.Imaging;
@@ -168,8 +169,8 @@ public class OcrService : IDisposable
     }
 
     /// <summary>
-    /// High performance image preprocessing with direct memory access (LockBits).
-    /// Upscales 3x and adapts dark/light mode for maximum OCR accuracy.
+    /// Advanced image preprocessing with 3x upscaling, contrast auto-stretching, 
+    /// and dark/light mode inversion. Ensures faint gray subtitle text becomes crisp solid black.
     /// </summary>
     private Bitmap PreprocessImage(Bitmap src)
     {
@@ -177,7 +178,7 @@ public class OcrService : IDisposable
         int newWidth = Math.Max(1, (int)(src.Width * scale));
         int newHeight = Math.Max(1, (int)(src.Height * scale));
 
-        // Step 1: Upscale using high quality interpolation
+        // Step 1: Upscale using high quality bicubic interpolation
         var upscaled = new Bitmap(newWidth, newHeight, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(upscaled))
         {
@@ -188,7 +189,7 @@ public class OcrService : IDisposable
             g.DrawImage(src, 0, 0, newWidth, newHeight);
         }
 
-        // Step 2: Ultra-fast LockBits memory processing (100x faster than GetPixel)
+        // Step 2: LockBits memory processing
         var rect = new Rectangle(0, 0, newWidth, newHeight);
         var bmpData = upscaled.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
         int totalBytes = Math.Abs(bmpData.Stride) * newHeight;
@@ -196,7 +197,9 @@ public class OcrService : IDisposable
 
         Marshal.Copy(bmpData.Scan0, rgbValues, 0, totalBytes);
 
-        // Calculate average brightness
+        // Pass 1: Compute min, max, and average brightness
+        int minGray = 255;
+        int maxGray = 0;
         long totalBrightness = 0;
         int pixelCount = newWidth * newHeight;
 
@@ -206,12 +209,16 @@ public class OcrService : IDisposable
             byte g = rgbValues[i + 1];
             byte r = rgbValues[i + 2];
             int gray = (int)(0.299 * r + 0.587 * g + 0.114 * b);
+            
+            if (gray < minGray) minGray = gray;
+            if (gray > maxGray) maxGray = gray;
             totalBrightness += gray;
         }
 
         bool isDarkMode = (totalBrightness / (double)pixelCount) < 128;
+        int contrastRange = Math.Max(1, maxGray - minGray);
 
-        // Apply grayscale conversion and auto-invert for dark backgrounds
+        // Pass 2: Apply Auto Contrast Stretching and Inversion
         for (int i = 0; i < totalBytes; i += 4)
         {
             byte b = rgbValues[i];
@@ -219,16 +226,29 @@ public class OcrService : IDisposable
             byte r = rgbValues[i + 2];
             int gray = (int)(0.299 * r + 0.587 * g + 0.114 * b);
 
+            // Stretch dynamic range to 0..255
+            int stretched = ((gray - minGray) * 255) / contrastRange;
+
             if (isDarkMode)
             {
-                gray = 255 - gray; // Invert: light text on dark bg -> dark text on light bg
+                // Dark mode: light text -> dark text (0), dark bg -> white bg (255)
+                stretched = 255 - stretched;
             }
 
-            byte finalVal = (byte)Math.Clamp(gray, 0, 255);
+            // High-contrast curve for crisp letter edges (darken text below threshold)
+            if (stretched < 180)
+            {
+                stretched = (int)(stretched * 0.7); // Darken text
+            }
+            else
+            {
+                stretched = Math.Min(255, (int)(stretched * 1.15)); // Whiten background
+            }
+
+            byte finalVal = (byte)Math.Clamp(stretched, 0, 255);
             rgbValues[i] = finalVal;     // B
             rgbValues[i + 1] = finalVal; // G
             rgbValues[i + 2] = finalVal; // R
-            // Alpha (rgbValues[i + 3]) stays 255
         }
 
         Marshal.Copy(rgbValues, 0, bmpData.Scan0, totalBytes);
@@ -246,11 +266,17 @@ public class OcrService : IDisposable
 
         foreach (var line in lines)
         {
-            string trimmed = line.Trim();
-            // Filter out single character noise from icons
-            if (trimmed.Length > 1 || (trimmed.Length == 1 && char.IsLetterOrDigit(trimmed[0])))
+            string cleaned = line.Trim();
+
+            // Fix common OCR noise in English text (e.g. accidental stray Hiragana/noise characters)
+            cleaned = Regex.Replace(cleaned, @"[ぁ-んァ-ヶ]", " "); // Remove stray Japanese characters in English OCR
+            cleaned = Regex.Replace(cleaned, @"\s+", " "); // Normalize multiple spaces
+            cleaned = Regex.Replace(cleaned, @"\bofyo\b", "of your", RegexOptions.IgnoreCase); // Common OCR fix
+            cleaned = Regex.Replace(cleaned, @"\byo\b", "your", RegexOptions.IgnoreCase);
+
+            if (cleaned.Length > 1 || (cleaned.Length == 1 && char.IsLetterOrDigit(cleaned[0])))
             {
-                sb.AppendLine(trimmed);
+                sb.AppendLine(cleaned);
             }
         }
 
