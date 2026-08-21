@@ -6,35 +6,83 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Tesseract;
+using Windows.Graphics.Imaging;
+using Windows.Media.Ocr;
+using Windows.Globalization;
 
 namespace ScreenTranslator.Services;
 
 public class OcrService : IDisposable
 {
     private TesseractEngine? _tesseractEngine;
-    private readonly string _tessdataPath;
+    private OcrEngine? _winOcrEngine;
 
     public OcrService()
     {
-        // Check tessdata in base directory or app directory
-        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-        _tessdataPath = Path.Combine(baseDir, "tessdata");
+        InitializeWindowsOcr();
+        InitializeTesseract();
+    }
 
-        if (!Directory.Exists(_tessdataPath))
-        {
-            // Fallback check in current working directory
-            string cwdTessdata = Path.Combine(Directory.GetCurrentDirectory(), "tessdata");
-            if (Directory.Exists(cwdTessdata))
-            {
-                _tessdataPath = cwdTessdata;
-            }
-        }
-
+    private void InitializeWindowsOcr()
+    {
         try
         {
-            if (Directory.Exists(_tessdataPath))
+            // Try English first
+            var englishLang = new Language("en-US");
+            if (OcrEngine.IsLanguageSupported(englishLang))
             {
-                _tesseractEngine = new TesseractEngine(_tessdataPath, "eng", EngineMode.Default);
+                _winOcrEngine = OcrEngine.TryCreateFromLanguage(englishLang);
+            }
+
+            // Fallback to Japanese (which can still partially read Latin characters)
+            if (_winOcrEngine == null)
+            {
+                var jaLang = new Language("ja");
+                if (OcrEngine.IsLanguageSupported(jaLang))
+                {
+                    _winOcrEngine = OcrEngine.TryCreateFromLanguage(jaLang);
+                }
+            }
+
+            // Final fallback
+            _winOcrEngine ??= OcrEngine.TryCreateFromUserProfileLanguages();
+        }
+        catch
+        {
+            _winOcrEngine = null;
+        }
+    }
+
+    private void InitializeTesseract()
+    {
+        try
+        {
+            // For single-file publish, AppDomain.BaseDirectory points to temp extraction dir.
+            // The tessdata folder is alongside the actual .exe on disk.
+            string? exePath = Environment.ProcessPath;
+            string? exeDir = exePath != null ? Path.GetDirectoryName(exePath) : null;
+
+            string[] searchPaths = new[]
+            {
+                exeDir != null ? Path.Combine(exeDir, "tessdata") : "",
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata"),
+                Path.Combine(Directory.GetCurrentDirectory(), "tessdata"),
+            };
+
+            string? tessdataPath = null;
+            foreach (var path in searchPaths)
+            {
+                if (!string.IsNullOrEmpty(path) && Directory.Exists(path)
+                    && File.Exists(Path.Combine(path, "eng.traineddata")))
+                {
+                    tessdataPath = path;
+                    break;
+                }
+            }
+
+            if (tessdataPath != null)
+            {
+                _tesseractEngine = new TesseractEngine(tessdataPath, "eng", EngineMode.Default);
                 _tesseractEngine.DefaultPageSegMode = PageSegMode.SparseText;
             }
         }
@@ -44,45 +92,90 @@ public class OcrService : IDisposable
         }
     }
 
-    public Task<string> RecognizeTextAsync(Bitmap originalBitmap)
+    public async Task<string> RecognizeTextAsync(Bitmap originalBitmap)
     {
+        // Strategy: Try Tesseract (English-specialized) first, fall back to Windows OCR
+
+        // 1. Try Tesseract (high accuracy for English)
+        string tesseractResult = await TryTesseractAsync(originalBitmap);
+        if (!string.IsNullOrWhiteSpace(tesseractResult) && tesseractResult.Length >= 3)
+        {
+            return tesseractResult;
+        }
+
+        // 2. Fallback: Windows OCR (works even with Japanese engine for Latin text)
+        string winOcrResult = await TryWindowsOcrAsync(originalBitmap);
+        if (!string.IsNullOrWhiteSpace(winOcrResult))
+        {
+            return winOcrResult;
+        }
+
+        return string.Empty;
+    }
+
+    private Task<string> TryTesseractAsync(Bitmap originalBitmap)
+    {
+        if (_tesseractEngine == null) return Task.FromResult(string.Empty);
+
         return Task.Run(() =>
         {
             try
             {
-                // Preprocess bitmap: 2.5x upscale with Bicubic interpolation for sharper UI text recognition
                 using var processedBitmap = PreprocessImage(originalBitmap);
+                using var ms = new MemoryStream();
+                processedBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                byte[] imageBytes = ms.ToArray();
 
-                if (_tesseractEngine != null)
-                {
-                    using var ms = new MemoryStream();
-                    processedBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                    byte[] imageBytes = ms.ToArray();
+                using var pix = Pix.LoadFromMemory(imageBytes);
+                using var page = _tesseractEngine.Process(pix);
 
-                    using var pix = Pix.LoadFromMemory(imageBytes);
-                    using var page = _tesseractEngine.Process(pix);
-
-                    string text = page.GetText();
-                    string cleaned = CleanOcrOutput(text);
-
-                    if (!string.IsNullOrWhiteSpace(cleaned))
-                    {
-                        return cleaned;
-                    }
-                }
-
-                return string.Empty;
+                string text = page.GetText();
+                return CleanOcrOutput(text);
             }
-            catch (Exception ex)
+            catch
             {
-                return $"OCR Error: {ex.Message}";
+                return string.Empty;
             }
         });
     }
 
+    private async Task<string> TryWindowsOcrAsync(Bitmap bitmap)
+    {
+        if (_winOcrEngine == null) return string.Empty;
+
+        try
+        {
+            // Upscale for better Windows OCR recognition
+            using var processedBitmap = PreprocessImage(bitmap);
+            using var ms = new MemoryStream();
+            processedBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
+            ms.Position = 0;
+
+            var randomAccessStream = ms.AsRandomAccessStream();
+            var decoder = await BitmapDecoder.CreateAsync(randomAccessStream);
+            using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied
+            );
+
+            var ocrResult = await _winOcrEngine.RecognizeAsync(softwareBitmap);
+
+            var sb = new StringBuilder();
+            foreach (var line in ocrResult.Lines)
+            {
+                sb.AppendLine(line.Text);
+            }
+
+            return CleanOcrOutput(sb.ToString());
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     private Bitmap PreprocessImage(Bitmap src)
     {
-        // Upscale factor
         float scale = 2.5f;
         int newWidth = (int)(src.Width * scale);
         int newHeight = (int)(src.Height * scale);
@@ -94,7 +187,6 @@ public class OcrService : IDisposable
             g.SmoothingMode = SmoothingMode.HighQuality;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.CompositingQuality = CompositingQuality.HighQuality;
-
             g.DrawImage(src, 0, 0, newWidth, newHeight);
         }
 
@@ -111,7 +203,6 @@ public class OcrService : IDisposable
         foreach (var line in lines)
         {
             string trimmed = line.Trim();
-            // Filter out single character noise from icons
             if (trimmed.Length > 1 || (trimmed.Length == 1 && char.IsLetterOrDigit(trimmed[0])))
             {
                 sb.AppendLine(trimmed);
