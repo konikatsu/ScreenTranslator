@@ -18,38 +18,12 @@ public class OcrService : IDisposable
 {
     private TesseractEngine? _tesseractEngine;
     private OcrEngine? _winOcrEngine;
+    private string _initLog = "";
 
     public OcrService()
     {
-        InitializeWindowsOcr();
         InitializeTesseract();
-    }
-
-    private void InitializeWindowsOcr()
-    {
-        try
-        {
-            var englishLang = new Language("en-US");
-            if (OcrEngine.IsLanguageSupported(englishLang))
-            {
-                _winOcrEngine = OcrEngine.TryCreateFromLanguage(englishLang);
-            }
-
-            if (_winOcrEngine == null)
-            {
-                var jaLang = new Language("ja");
-                if (OcrEngine.IsLanguageSupported(jaLang))
-                {
-                    _winOcrEngine = OcrEngine.TryCreateFromLanguage(jaLang);
-                }
-            }
-
-            _winOcrEngine ??= OcrEngine.TryCreateFromUserProfileLanguages();
-        }
-        catch
-        {
-            _winOcrEngine = null;
-        }
+        InitializeWindowsOcr();
     }
 
     private void InitializeTesseract()
@@ -58,12 +32,16 @@ public class OcrService : IDisposable
         {
             string? exePath = Environment.ProcessPath;
             string? exeDir = exePath != null ? Path.GetDirectoryName(exePath) : null;
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string curDir = Directory.GetCurrentDirectory();
 
             string[] searchPaths = new[]
             {
                 exeDir != null ? Path.Combine(exeDir, "tessdata") : "",
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata"),
-                Path.Combine(Directory.GetCurrentDirectory(), "tessdata"),
+                Path.Combine(baseDir, "tessdata"),
+                Path.Combine(curDir, "tessdata"),
+                @"C:\dev\ScreenTranslator\tessdata",
+                @"C:\dev\ScreenTranslator\publish\tessdata"
             };
 
             string? tessdataPath = null;
@@ -79,30 +57,91 @@ public class OcrService : IDisposable
 
             if (tessdataPath != null)
             {
+                // Ensure native x64 directory is in PATH so tesseract50.dll can be loaded
+                string? nativeDir = exeDir != null ? Path.Combine(exeDir, "x64") : null;
+                if (nativeDir != null && Directory.Exists(nativeDir))
+                {
+                    string currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+                    if (!currentPath.Contains(nativeDir))
+                    {
+                        Environment.SetEnvironmentVariable("PATH", nativeDir + ";" + currentPath);
+                    }
+                }
+
                 _tesseractEngine = new TesseractEngine(tessdataPath, "eng", EngineMode.Default);
-                _tesseractEngine.DefaultPageSegMode = PageSegMode.SparseText;
+                _tesseractEngine.DefaultPageSegMode = PageSegMode.Auto; // Auto is best for full paragraphs and multi-line UI
+                _initLog += $"[Tesseract OK: {tessdataPath}] ";
+            }
+            else
+            {
+                _initLog += "[Tesseract Fail: tessdata not found] ";
             }
         }
-        catch
+        catch (Exception ex)
         {
+            _initLog += $"[Tesseract Exception: {ex.Message}] ";
             _tesseractEngine = null;
+        }
+    }
+
+    private void InitializeWindowsOcr()
+    {
+        try
+        {
+            // ONLY use English Windows OCR. NEVER fallback to Japanese OCR for English UI!
+            var englishLang = new Language("en-US");
+            if (OcrEngine.IsLanguageSupported(englishLang))
+            {
+                _winOcrEngine = OcrEngine.TryCreateFromLanguage(englishLang);
+                _initLog += "[WinOCR en-US OK]";
+            }
+            else
+            {
+                var enGb = new Language("en-GB");
+                if (OcrEngine.IsLanguageSupported(enGb))
+                {
+                    _winOcrEngine = OcrEngine.TryCreateFromLanguage(enGb);
+                    _initLog += "[WinOCR en-GB OK]";
+                }
+                else
+                {
+                    _winOcrEngine = null;
+                    _initLog += "[WinOCR: No English pack]";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _initLog += $"[WinOCR Exception: {ex.Message}]";
+            _winOcrEngine = null;
         }
     }
 
     public async Task<string> RecognizeTextAsync(Bitmap originalBitmap)
     {
-        // 1. Try Tesseract (English-specialized) first
-        string tesseractResult = await TryTesseractAsync(originalBitmap);
-        if (!string.IsNullOrWhiteSpace(tesseractResult) && tesseractResult.Length >= 2)
+        // 1. Try Tesseract first
+        if (_tesseractEngine != null)
         {
-            return tesseractResult;
+            string tesseractResult = await TryTesseractAsync(originalBitmap);
+            if (!string.IsNullOrWhiteSpace(tesseractResult) && tesseractResult.Length >= 2)
+            {
+                return tesseractResult;
+            }
         }
 
-        // 2. Fallback to Windows OCR
-        string winOcrResult = await TryWindowsOcrAsync(originalBitmap);
-        if (!string.IsNullOrWhiteSpace(winOcrResult))
+        // 2. Fallback to Windows OCR (English only)
+        if (_winOcrEngine != null)
         {
-            return winOcrResult;
+            string winOcrResult = await TryWindowsOcrAsync(originalBitmap);
+            if (!string.IsNullOrWhiteSpace(winOcrResult))
+            {
+                return winOcrResult;
+            }
+        }
+
+        if (_tesseractEngine == null && _winOcrEngine == null)
+        {
+            return $"[OCR Engine Not Available]\n{_initLog}";
         }
 
         return string.Empty;
@@ -110,8 +149,6 @@ public class OcrService : IDisposable
 
     private Task<string> TryTesseractAsync(Bitmap originalBitmap)
     {
-        if (_tesseractEngine == null) return Task.FromResult(string.Empty);
-
         return Task.Run(() =>
         {
             try
@@ -122,13 +159,14 @@ public class OcrService : IDisposable
                 byte[] imageBytes = ms.ToArray();
 
                 using var pix = Pix.LoadFromMemory(imageBytes);
-                using var page = _tesseractEngine.Process(pix);
+                using var page = _tesseractEngine!.Process(pix);
 
                 string text = page.GetText();
                 return CleanOcrOutput(text);
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[Tesseract Error] {ex.Message}");
                 return string.Empty;
             }
         });
@@ -136,8 +174,6 @@ public class OcrService : IDisposable
 
     private async Task<string> TryWindowsOcrAsync(Bitmap bitmap)
     {
-        if (_winOcrEngine == null) return string.Empty;
-
         try
         {
             using var processedBitmap = PreprocessImage(bitmap);
@@ -152,7 +188,7 @@ public class OcrService : IDisposable
                 BitmapAlphaMode.Premultiplied
             );
 
-            var ocrResult = await _winOcrEngine.RecognizeAsync(softwareBitmap);
+            var ocrResult = await _winOcrEngine!.RecognizeAsync(softwareBitmap);
 
             var sb = new StringBuilder();
             foreach (var line in ocrResult.Lines)
@@ -268,11 +304,12 @@ public class OcrService : IDisposable
         {
             string cleaned = line.Trim();
 
-            // Fix common OCR noise in English text (e.g. accidental stray Hiragana/noise characters)
-            cleaned = Regex.Replace(cleaned, @"[ぁ-んァ-ヶ]", " "); // Remove stray Japanese characters in English OCR
+            // Fix common OCR noise in English text
+            cleaned = Regex.Replace(cleaned, @"[ぁ-んァ-ヶ一-龠]", " "); // Remove any stray Japanese characters in English OCR
             cleaned = Regex.Replace(cleaned, @"\s+", " "); // Normalize multiple spaces
-            cleaned = Regex.Replace(cleaned, @"\bofyo\b", "of your", RegexOptions.IgnoreCase); // Common OCR fix
-            cleaned = Regex.Replace(cleaned, @"\byo\b", "your", RegexOptions.IgnoreCase);
+            cleaned = Regex.Replace(cleaned, @"\bofyo\b", "of your", RegexOptions.IgnoreCase);
+            cleaned = Regex.Replace(cleaned, @"\blirnit\b", "limit", RegexOptions.IgnoreCase);
+            cleaned = Regex.Replace(cleaned, @"\b5-hourlirnit\b", "5-hour limit", RegexOptions.IgnoreCase);
 
             if (cleaned.Length > 1 || (cleaned.Length == 1 && char.IsLetterOrDigit(cleaned[0])))
             {
