@@ -1,14 +1,17 @@
-## Build and output directories
+## Build and Output
 bin/
 obj/
 publish/
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
+out/
+
+## Visual Studio / VS Code
 .vs/
 .vscode/
+.idea/
+*.user
+*.suo
 
-## Logs and temporary files
+## Temporary / Logs
 *.log
 *.tmp
+*.cache

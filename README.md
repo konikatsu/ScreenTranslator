@@ -1,81 +1,61 @@
-# 🌐 Screen Translator (画面キャプチャ＆即時翻訳ツール)
+# 📸 Screen Translator
 
-[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
-[![Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6?logo=windows&logoColor=white)](https://microsoft.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6.svg)](https://microsoft.com/windows)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Windowsの画面上の英語（アプリのメニュー、ボタン、Webサイト、画像内のテキストなど）をマウスで囲むだけで、その場で瞬時に日本語訳をポップアップ表示する常駐型デスクトップユーティリティです。
+Windowsデスクトップ上でショートカットキー（`Alt + Q`）を押して画面の任意の範囲を囲むだけで、英語のUIテキストやエラーメッセージをOCR（文字認識）し、即座に日本語に翻訳してポップアップ表示する軽量な常駐アプリケーションです。
 
----
-
-## ✨ 主な特徴
-
-- ⚡ **超高速・軽量（Native C# / WPF）**
-  - 常駐待機時のメモリ消費はわずか **15〜30MB**、CPU使用率 **0%**。
-  - Windows 10/11 標準の文字認識エンジン（`Windows.Media.Ocr` / GPU自動加速）をネイティブ利用するため、起動・認識が爆速です。
-- 🖱️ **マウス操作でもキーボードでも瞬時に起動**
-  - **ショートカットキー:** `Alt + Q` を押すだけで画面がスナイピングモードに切り替わります。
-  - **マウス操作:** タスクトレイ（画面右下）のアイコンを左クリックするだけでも呼び出し可能。
-- 🎨 **洗練されたモダンUI（Windows 11スタイル）**
-  - 半透明ダークテーマの角丸ポップアップカードで翻訳結果を表示。
-  - 翻訳結果はワンクリックでクリップボードへコピー可能。
-  - 外側をクリックするか `Esc` キーを押すだけで自動でスッと消えます。
-- 📦 **完全スタンドアロン（単一 .exe 配布対応）**
-  - 外部ランタイムや追加のモデルダウンロード不要で、`.exe` をダブルクリックするだけで即座に動作します。
+A lightweight, resident Windows desktop tool for instant screen OCR and translation (English to Japanese) triggered by a global hotkey (`Alt + Q`).
 
 ---
 
-## 🚀 使い方
+## ✨ 主な機能 (Features)
 
-1. **アプリを起動**
-   - 起動するとタスクトレイ（右下の時計の横）にアイコン（`訳`）が常駐します。
-2. **キャプチャ開始**
-   - キーボードの **`Alt + Q`** を押すか、**タスクトレイアイコンを左クリック** します。
-   - 画面全体がうっすら暗くなります。
-3. **範囲選択**
-   - 読みたい英語のテキストやボタンをマウスでドラッグして四角く囲みます。
-4. **翻訳結果の確認**
-   - マウスを離すと、カーソルのすぐ横に翻訳結果ポップアップが表示されます。
-   - **`📋 コピー`** ボタンを押すと翻訳文をコピーできます。
-   - 画面の別の場所をクリックするか `Esc` キーでポップアップが閉じます。
-
----
-
-## 🛠️ 技術スタック
-
-| 項目 | 使用技術 |
-| :--- | :--- |
-| **開発言語** | C# 13 / .NET 10 |
-| **GUI フレームワーク** | WPF (Windows Presentation Foundation) + Windows Forms (NotifyIcon) |
-| **文字認識 (OCR)** | `Windows.Media.Ocr.OcrEngine` (WinRT Native API) |
-| **翻訳エンジン** | Google Translate Web API |
-| **ホットキー管理** | Win32 API (`RegisterHotKey` / `UnregisterHotKey`) |
+* **⚡ グローバルショートカット (`Alt + Q`)**
+  * どのアプリを開いていても、`Alt + Q` を押すだけで瞬時に画面キャプチャオーバーレイが起動します。
+* **🔍 ハイブリッドOCRエンジン（高精度認識）**
+  * 高精度な **Tesseract OCR** をメインに使用し、UI要素やプログラミング用フォントもくっきりと認識。
+  * WinRT OCR（Windows Media OCR）への自動フォールバック機能付き。
+* **🎨 高度な画像前処理**
+  * 3.0倍バイキュービック拡大、LockBits高速メモリ処理、ダークモード自動反転（黒背景白文字の最適化）により、小さなメニュー文字も逃さず認識。
+* **🌐 高速な並列翻訳**
+  * Google Translate API を非同期並列で実行し、複数行のメニューや設定項目も元の改行構造を保ったまま一瞬で翻訳。
+* **🪄 モダンなダークテーマ・ポップアップ**
+  * カーソルのすぐ隣に翻訳結果がスマートに浮遊表示。ドラッグ移動やワンクリックコピーに対応。
+* **🎈 タスクトレイ常駐（メモリ消費 15〜30MB）**
+  * バックグラウンドで静かに常駐し、PC起動時に邪魔になりません。
 
 ---
 
-## 🔨 ビルド手順 (開発者向け)
+## 🛠️ 動作環境 (Requirements)
 
-### 前提条件
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) 以降
-- Windows 10 (Build 19041 以降) または Windows 11
+* **OS:** Windows 10 / Windows 11 (64-bit)
+* **ランタイム:** .NET 10.0 ランタイム（自己完結型バイナリの場合はインストール不要）
 
-### ビルドと実行
-```powershell
-# リポジトリのクローン
-git clone https://github.com/<YOUR_USERNAME>/ScreenTranslator.git
+---
+
+## 🚀 クイックスタート (Usage)
+
+1. [Releases](../../releases) から最新の `ScreenTranslator.zip` または `ScreenTranslator.exe` をダウンロードします。
+2. 実行するとタスクトレイに常駐します。
+3. 翻訳したい画面（Antigravity、IDE、ブラウザ、設定画面など）で **`Alt + Q`** を押します。
+4. マウスで翻訳したいテキストをドラッグして囲むと、その場に日本語の翻訳ポップアップが表示されます！
+
+---
+
+## 📦 ビルド方法 (Build from source)
+
+```bash
+git clone https://github.com/konikatsu/ScreenTranslator.git
 cd ScreenTranslator
 
-# 通常ビルド＆実行
-dotnet run
-
-# 単一の .exe ファイルとしてリリースビルド
-dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o ./publish
+# 単一実行ファイル（Self-contained .exe）のビルド
+dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o ./publish
 ```
-
-ビルド完了後、`publish/ScreenTranslator.exe` に単一の実行ファイルが生成されます。
 
 ---
 
-## 📄 ライセンス
+## 📄 ライセンス (License)
 
-本プロジェクトは [MIT License](LICENSE) のもとで公開されています。商用・非商用問わず自由にご利用いただけます。
+This project is licensed under the [MIT License](LICENSE).
