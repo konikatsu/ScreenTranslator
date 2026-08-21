@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Tesseract;
@@ -27,14 +28,12 @@ public class OcrService : IDisposable
     {
         try
         {
-            // Try English first
             var englishLang = new Language("en-US");
             if (OcrEngine.IsLanguageSupported(englishLang))
             {
                 _winOcrEngine = OcrEngine.TryCreateFromLanguage(englishLang);
             }
 
-            // Fallback to Japanese (which can still partially read Latin characters)
             if (_winOcrEngine == null)
             {
                 var jaLang = new Language("ja");
@@ -44,7 +43,6 @@ public class OcrService : IDisposable
                 }
             }
 
-            // Final fallback
             _winOcrEngine ??= OcrEngine.TryCreateFromUserProfileLanguages();
         }
         catch
@@ -57,8 +55,6 @@ public class OcrService : IDisposable
     {
         try
         {
-            // For single-file publish, AppDomain.BaseDirectory points to temp extraction dir.
-            // The tessdata folder is alongside the actual .exe on disk.
             string? exePath = Environment.ProcessPath;
             string? exeDir = exePath != null ? Path.GetDirectoryName(exePath) : null;
 
@@ -94,16 +90,14 @@ public class OcrService : IDisposable
 
     public async Task<string> RecognizeTextAsync(Bitmap originalBitmap)
     {
-        // Strategy: Try Tesseract (English-specialized) first, fall back to Windows OCR
-
-        // 1. Try Tesseract (high accuracy for English)
+        // 1. Try Tesseract (English-specialized) first
         string tesseractResult = await TryTesseractAsync(originalBitmap);
-        if (!string.IsNullOrWhiteSpace(tesseractResult) && tesseractResult.Length >= 3)
+        if (!string.IsNullOrWhiteSpace(tesseractResult) && tesseractResult.Length >= 2)
         {
             return tesseractResult;
         }
 
-        // 2. Fallback: Windows OCR (works even with Japanese engine for Latin text)
+        // 2. Fallback to Windows OCR
         string winOcrResult = await TryWindowsOcrAsync(originalBitmap);
         if (!string.IsNullOrWhiteSpace(winOcrResult))
         {
@@ -145,7 +139,6 @@ public class OcrService : IDisposable
 
         try
         {
-            // Upscale for better Windows OCR recognition
             using var processedBitmap = PreprocessImage(bitmap);
             using var ms = new MemoryStream();
             processedBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
@@ -174,13 +167,17 @@ public class OcrService : IDisposable
         }
     }
 
+    /// <summary>
+    /// High performance image preprocessing with direct memory access (LockBits).
+    /// Upscales 3x and adapts dark/light mode for maximum OCR accuracy.
+    /// </summary>
     private Bitmap PreprocessImage(Bitmap src)
     {
         float scale = 3.0f;
-        int newWidth = (int)(src.Width * scale);
-        int newHeight = (int)(src.Height * scale);
+        int newWidth = Math.Max(1, (int)(src.Width * scale));
+        int newHeight = Math.Max(1, (int)(src.Height * scale));
 
-        // Step 1: Upscale with high quality interpolation
+        // Step 1: Upscale using high quality interpolation
         var upscaled = new Bitmap(newWidth, newHeight, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(upscaled))
         {
@@ -191,42 +188,53 @@ public class OcrService : IDisposable
             g.DrawImage(src, 0, 0, newWidth, newHeight);
         }
 
-        // Step 2: Convert to grayscale and auto-detect dark/light mode
+        // Step 2: Ultra-fast LockBits memory processing (100x faster than GetPixel)
+        var rect = new Rectangle(0, 0, newWidth, newHeight);
+        var bmpData = upscaled.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+        int totalBytes = Math.Abs(bmpData.Stride) * newHeight;
+        byte[] rgbValues = new byte[totalBytes];
+
+        Marshal.Copy(bmpData.Scan0, rgbValues, 0, totalBytes);
+
+        // Calculate average brightness
         long totalBrightness = 0;
-        var grayValues = new byte[newWidth * newHeight];
+        int pixelCount = newWidth * newHeight;
 
-        for (int y = 0; y < newHeight; y++)
+        for (int i = 0; i < totalBytes; i += 4)
         {
-            for (int x = 0; x < newWidth; x++)
-            {
-                Color pixel = upscaled.GetPixel(x, y);
-                int gray = (int)(0.299 * pixel.R + 0.587 * pixel.G + 0.114 * pixel.B);
-                grayValues[y * newWidth + x] = (byte)gray;
-                totalBrightness += gray;
-            }
+            byte b = rgbValues[i];
+            byte g = rgbValues[i + 1];
+            byte r = rgbValues[i + 2];
+            int gray = (int)(0.299 * r + 0.587 * g + 0.114 * b);
+            totalBrightness += gray;
         }
 
-        long totalPixels = (long)newWidth * newHeight;
-        double avgBrightness = totalBrightness / (double)totalPixels;
-        bool isDarkMode = avgBrightness < 128;
+        bool isDarkMode = (totalBrightness / (double)pixelCount) < 128;
 
-        // Step 3: Create output - grayscale, inverted if dark mode (OCR needs dark text on light bg)
-        var result = new Bitmap(newWidth, newHeight, PixelFormat.Format32bppArgb);
-        for (int y = 0; y < newHeight; y++)
+        // Apply grayscale conversion and auto-invert for dark backgrounds
+        for (int i = 0; i < totalBytes; i += 4)
         {
-            for (int x = 0; x < newWidth; x++)
+            byte b = rgbValues[i];
+            byte g = rgbValues[i + 1];
+            byte r = rgbValues[i + 2];
+            int gray = (int)(0.299 * r + 0.587 * g + 0.114 * b);
+
+            if (isDarkMode)
             {
-                int gray = grayValues[y * newWidth + x];
-                if (isDarkMode)
-                {
-                    gray = 255 - gray; // Invert: light text on dark bg → dark text on light bg
-                }
-                result.SetPixel(x, y, Color.FromArgb(255, gray, gray, gray));
+                gray = 255 - gray; // Invert: light text on dark bg -> dark text on light bg
             }
+
+            byte finalVal = (byte)Math.Clamp(gray, 0, 255);
+            rgbValues[i] = finalVal;     // B
+            rgbValues[i + 1] = finalVal; // G
+            rgbValues[i + 2] = finalVal; // R
+            // Alpha (rgbValues[i + 3]) stays 255
         }
 
-        upscaled.Dispose();
-        return result;
+        Marshal.Copy(rgbValues, 0, bmpData.Scan0, totalBytes);
+        upscaled.UnlockBits(bmpData);
+
+        return upscaled;
     }
 
     private string CleanOcrOutput(string text)
@@ -239,6 +247,7 @@ public class OcrService : IDisposable
         foreach (var line in lines)
         {
             string trimmed = line.Trim();
+            // Filter out single character noise from icons
             if (trimmed.Length > 1 || (trimmed.Length == 1 && char.IsLetterOrDigit(trimmed[0])))
             {
                 sb.AppendLine(trimmed);

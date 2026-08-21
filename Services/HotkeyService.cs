@@ -6,10 +6,10 @@ namespace ScreenTranslator.Services;
 
 public class HotkeyService : IDisposable
 {
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     public const uint MOD_ALT = 0x0001;
@@ -36,8 +36,18 @@ public class HotkeyService : IDisposable
 
         _hwndSource = new HwndSource(parameters);
 
-        // Register Alt + Q (with MOD_NOREPEAT if supported)
-        RegisterHotKey(_hwndSource.Handle, HOTKEY_ID, MOD_ALT | MOD_NOREPEAT, VK_Q);
+        // Try Register Alt + Q with MOD_NOREPEAT
+        bool success = RegisterHotKey(_hwndSource.Handle, HOTKEY_ID, MOD_ALT | MOD_NOREPEAT, VK_Q);
+        if (!success)
+        {
+            // Fallback without MOD_NOREPEAT
+            success = RegisterHotKey(_hwndSource.Handle, HOTKEY_ID, MOD_ALT, VK_Q);
+        }
+
+        if (!success)
+        {
+            throw new InvalidOperationException("ホットキー(Alt+Q)の登録に失敗しました。他のアプリケーションが既に使用している可能性があります。");
+        }
     }
 
     private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)

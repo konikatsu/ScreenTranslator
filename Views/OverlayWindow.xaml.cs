@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -64,7 +65,7 @@ public partial class OverlayWindow : Window
         }
     }
 
-    private void Window_MouseUp(object sender, MouseButtonEventArgs e)
+    private async void Window_MouseUp(object sender, MouseButtonEventArgs e)
     {
         if (_isSelecting)
         {
@@ -79,7 +80,7 @@ public partial class OverlayWindow : Window
 
             if (logicalW > 10 && logicalH > 10)
             {
-                // Convert WPF logical units to device physical pixels
+                // Convert WPF logical units to device physical pixels for screen capture
                 Point screenTopLeft = PointToScreen(new Point(logicalX, logicalY));
                 Point screenBottomRight = PointToScreen(new Point(logicalX + logicalW, logicalY + logicalH));
 
@@ -88,14 +89,14 @@ public partial class OverlayWindow : Window
                 int physW = (int)Math.Abs(screenBottomRight.X - screenTopLeft.X);
                 int physH = (int)Math.Abs(screenBottomRight.Y - screenTopLeft.Y);
 
-                // Mouse location in screen logical units for popup placement
-                Point mousePos = PointToScreen(current);
+                // Mouse location in WPF logical coordinates for accurate popup placement across all DPI scales
+                Point mouseLogicalPos = new Point(Left + current.X, Top + current.Y);
 
                 // Hide overlay immediately so it won't be captured
                 Hide();
 
-                // Small delay to ensure overlay is fully unrendered before screenshot
-                System.Threading.Thread.Sleep(50);
+                // Non-blocking async delay to ensure overlay is fully unrendered before screenshot
+                await Task.Delay(60);
 
                 var bitmap = new Bitmap(physW, physH, PixelFormat.Format32bppArgb);
                 using (var g = Graphics.FromImage(bitmap))
@@ -104,7 +105,7 @@ public partial class OverlayWindow : Window
                 }
 
                 Close();
-                Snipped?.Invoke(bitmap, mousePos);
+                Snipped?.Invoke(bitmap, mouseLogicalPos);
             }
             else
             {

@@ -19,7 +19,7 @@ public class TranslationService
 
     /// <summary>
     /// Translates text from English to Japanese using Google Translate Web API.
-    /// Preserves multi-line structure for clean menu and list translations.
+    /// Preserves multi-line structure and translates lines in parallel with Task.WhenAll.
     /// </summary>
     public async Task<string> TranslateToJapaneseAsync(string text)
     {
@@ -33,18 +33,13 @@ public class TranslationService
             return await TranslateSingleBlockAsync(text.Trim());
         }
 
-        // Translate each line to keep UI menu lines accurate
-        var translatedLines = new List<string>();
-        foreach (var line in lines)
-        {
-            string trimmed = line.Trim();
-            if (!string.IsNullOrWhiteSpace(trimmed))
-            {
-                string trans = await TranslateSingleBlockAsync(trimmed);
-                translatedLines.Add(trans);
-            }
-        }
+        // Translate each line concurrently in parallel for blazing fast response
+        var tasks = lines
+            .Select(l => l.Trim())
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Select(TranslateSingleBlockAsync);
 
+        var translatedLines = await Task.WhenAll(tasks);
         return string.Join(Environment.NewLine, translatedLines);
     }
 

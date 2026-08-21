@@ -162,6 +162,7 @@ public partial class App : Application
     {
         _notifyIcon?.Dispose();
         _hotkeyService?.Dispose();
+        _ocrService?.Dispose();
         Shutdown();
     }
 
@@ -169,6 +170,7 @@ public partial class App : Application
     {
         _notifyIcon?.Dispose();
         _hotkeyService?.Dispose();
+        _ocrService?.Dispose();
         base.OnExit(e);
     }
 }
