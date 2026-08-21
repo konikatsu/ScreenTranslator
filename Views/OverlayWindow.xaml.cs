@@ -11,6 +11,9 @@ namespace ScreenTranslator.Views;
 
 public partial class OverlayWindow : Window
 {
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmFlush();
+
     private bool _isSelecting = false;
     private Point _startPoint;
     public event Action<Bitmap, Point>? Snipped;
@@ -95,8 +98,11 @@ public partial class OverlayWindow : Window
                 // Hide overlay immediately so it won't be captured
                 Hide();
 
-                // Non-blocking wait for WPF render thread to guarantee overlay is visually gone
+                // 1. Wait for WPF internal render thread to process the Hide()
                 await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+
+                // 2. Wait for Windows Desktop Window Manager (DWM) to physically present the new frame to the screen
+                await Task.Run(() => DwmFlush());
 
                 var bitmap = new Bitmap(physW, physH, PixelFormat.Format32bppArgb);
                 using (var g = Graphics.FromImage(bitmap))
