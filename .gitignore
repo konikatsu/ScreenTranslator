@@ -1,0 +1,14 @@
+## Build and output directories
+bin/
+obj/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.vscode/
+
+## Logs and temporary files
+*.log
+*.tmp

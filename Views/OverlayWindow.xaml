@@ -1,0 +1,43 @@
+<Window x:Class="ScreenTranslator.Views.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Snipping Overlay"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="#55000000"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Cursor="Cross"
+        MouseDown="Window_MouseDown"
+        MouseMove="Window_MouseMove"
+        MouseUp="Window_MouseUp"
+        KeyDown="Window_KeyDown"
+        Loaded="Window_Loaded">
+    <Grid>
+        <!-- Selection Canvas -->
+        <Canvas x:Name="OverlayCanvas">
+            <!-- Selection Rectangle -->
+            <Rectangle x:Name="SelectionRect"
+                       Stroke="#00D2FF"
+                       StrokeThickness="2"
+                       StrokeDashArray="4 2"
+                       Fill="#2000D2FF"
+                       Visibility="Collapsed"/>
+        </Canvas>
+
+        <!-- Hint Text at Top Center -->
+        <Border VerticalAlignment="Top"
+                HorizontalAlignment="Center"
+                Margin="0,40,0,0"
+                Background="#E01E1E24"
+                BorderBrush="#00D2FF"
+                BorderThickness="1"
+                CornerRadius="20"
+                Padding="18,10">
+            <TextBlock Text="🖱️ 翻訳したい英語をマウスで囲んでください (Esc でキャンセル)"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Foreground="#FFFFFF"/>
+        </Border>
+    </Grid>
+</Window>
