@@ -26,70 +26,52 @@ public class TranslationService
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
 
-        var lines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-        
-        if (lines.Length <= 1)
-        {
-            return await TranslateSingleBlockAsync(text.Trim());
-        }
-
-        // Translate each line concurrently in parallel for blazing fast response
-        var tasks = lines
-            .Select(l => l.Trim())
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .Select(TranslateSingleBlockAsync);
-
-        var translatedLines = await Task.WhenAll(tasks);
-        return string.Join(Environment.NewLine, translatedLines);
+        // Send the entire text as a single request to avoid hitting rate limits with concurrent requests.
+        // Google Translate API handles newlines (\n) correctly.
+        return await TranslateSingleBlockAsync(text.Trim());
     }
 
     private async Task<string> TranslateSingleBlockAsync(string text)
     {
         try
         {
-            // Explicitly set source as English (sl=en) to prevent false Japanese detection
-            string url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ja&dt=t&q={Uri.EscapeDataString(text)}";
-            string response = await _httpClient.GetStringAsync(url);
+            // Use dict-chrome-ex which is often more stable and less aggressively rate-limited than gtx
+            string url = $"https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=ja&q={Uri.EscapeDataString(text)}";
+            
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            // Spoof Chrome extension user agent
+            request.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            
+            var response = await _httpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+            string responseBody = await response.Content.ReadAsStringAsync();
 
-            using var doc = JsonDocument.Parse(response);
+            // dict-chrome-ex returns a simple JSON array of translated strings if the input has newlines,
+            // or a single array with one string.
+            // Example: ["こんにちは\n世界"] or ["こんにちは", "世界"]
+            using var doc = JsonDocument.Parse(responseBody);
             var root = doc.RootElement;
-
-            if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+            
+            if (root.ValueKind == JsonValueKind.Array)
             {
-                var sentences = root[0];
                 var translatedBuilder = new System.Text.StringBuilder();
-
-                foreach (var sentence in sentences.EnumerateArray())
+                foreach (var element in root.EnumerateArray())
                 {
-                    if (sentence.ValueKind == JsonValueKind.Array && sentence.GetArrayLength() > 0)
+                    if (element.ValueKind == JsonValueKind.String)
                     {
-                        translatedBuilder.Append(sentence[0].GetString());
+                        translatedBuilder.Append(element.GetString());
                     }
                 }
-
                 string result = translatedBuilder.ToString();
-                return string.IsNullOrWhiteSpace(result) ? text : result;
+                return string.IsNullOrWhiteSpace(result) ? text : result.Trim();
             }
 
             return text;
         }
-        catch
+        catch (Exception ex)
         {
-            // Fallback with auto-detect if sl=en fails
-            try
-            {
-                string fallbackUrl = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ja&dt=t&q={Uri.EscapeDataString(text)}";
-                string fbResponse = await _httpClient.GetStringAsync(fallbackUrl);
-                using var fbDoc = JsonDocument.Parse(fbResponse);
-                var fbRoot = fbDoc.RootElement;
-                if (fbRoot.ValueKind == JsonValueKind.Array && fbRoot.GetArrayLength() > 0)
-                {
-                    return fbRoot[0][0][0].GetString() ?? text;
-                }
-            }
-            catch {}
-
-            return text;
+            System.Diagnostics.Debug.WriteLine($"[Translation Error] {ex.Message}");
+            return text; // Fallback to original text on failure
         }
     }
 }

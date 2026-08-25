@@ -24,23 +24,51 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Initialize Services
-        _ocrService = new OcrService();
-        _translationService = new TranslationService();
-        _hotkeyService = new HotkeyService();
+        AppDomain.CurrentDomain.UnhandledException += (s, args) =>
+        {
+            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[AppDomain Unhandled] {args.ExceptionObject}\n");
+        };
 
-        // Setup Taskbar / System Tray Icon
-        SetupNotifyIcon();
+        DispatcherUnhandledException += (s, args) =>
+        {
+            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[Dispatcher Unhandled] {args.Exception}\n");
+        };
 
-        // Register Global Hotkey (Alt + Q)
         try
         {
-            _hotkeyService.HotkeyPressed += OnHotkeyPressed;
-            _hotkeyService.Register();
+            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[Startup] Starting at {DateTime.Now}\n");
+
+            // Initialize Services
+            _ocrService = new OcrService();
+            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] OcrService initialized\n");
+
+            _translationService = new TranslationService();
+            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] TranslationService initialized\n");
+
+            _hotkeyService = new HotkeyService();
+            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] HotkeyService initialized\n");
+
+            // Setup Taskbar / System Tray Icon
+            SetupNotifyIcon();
+            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] NotifyIcon setup\n");
+
+            // Register Global Hotkey (Alt + Q)
+            try
+            {
+                _hotkeyService.HotkeyPressed += OnHotkeyPressed;
+                _hotkeyService.Register();
+                File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] Hotkey registered\n");
+            }
+            catch (Exception ex)
+            {
+                File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[Startup] Hotkey register failed: {ex.Message}\n");
+                MessageBox.Show($"ホットキー(Alt+Q)の登録に失敗しました: {ex.Message}", "Screen Translator", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"ホットキー(Alt+Q)の登録に失敗しました: {ex.Message}", "Screen Translator", MessageBoxButton.OK, MessageBoxImage.Warning);
+            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[Startup Error] {ex}\n");
+            MessageBox.Show($"起動時エラー: {ex.Message}", "Screen Translator", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

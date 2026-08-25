@@ -20,10 +20,17 @@ public class OcrService : IDisposable
     private OcrEngine? _winOcrEngine;
     private string _initLog = "";
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool SetDllDirectory(string lpPathName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr LoadLibrary(string libname);
+
     public OcrService()
     {
         InitializeTesseract();
         InitializeWindowsOcr();
+        try { File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[OcrService InitLog] {_initLog}\n"); } catch { }
     }
 
     private void InitializeTesseract()
@@ -35,17 +42,64 @@ public class OcrService : IDisposable
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string curDir = Directory.GetCurrentDirectory();
 
-            string[] searchPaths = new[]
+            string arch = Environment.Is64BitProcess ? "x64" : "x86";
+
+            // 1. Search for native DLLs (x64 / x86)
+            string[] nativeSearchPaths = new[]
+            {
+                exeDir != null ? Path.Combine(exeDir, arch) : "",
+                Path.Combine(baseDir, arch),
+                Path.Combine(curDir, arch),
+                $@"C:\dev\ScreenTranslator\publish\{arch}",
+                $@"C:\dev\ScreenTranslator\bin\Debug\net10.0-windows10.0.19041.0\{arch}",
+                $@"C:\dev\ScreenTranslator\{arch}"
+            };
+
+            string? nativeDir = null;
+            foreach (var path in nativeSearchPaths)
+            {
+                if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
+                {
+                    string leptDll = Path.Combine(path, "leptonica-1.82.0.dll");
+                    string tessDll = Path.Combine(path, "tesseract50.dll");
+                    if (File.Exists(leptDll) && File.Exists(tessDll))
+                    {
+                        nativeDir = path;
+                        break;
+                    }
+                }
+            }
+
+            if (nativeDir != null)
+            {
+                // Set DLL directory so Windows and Tesseract loader find dependencies
+                SetDllDirectory(nativeDir);
+
+                // Explicitly pre-load native libraries
+                LoadLibrary(Path.Combine(nativeDir, "leptonica-1.82.0.dll"));
+                LoadLibrary(Path.Combine(nativeDir, "tesseract50.dll"));
+
+                // Also update PATH
+                string currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+                if (!currentPath.Contains(nativeDir))
+                {
+                    Environment.SetEnvironmentVariable("PATH", nativeDir + ";" + currentPath);
+                }
+            }
+
+            // 2. Search for tessdata directory
+            string[] tessSearchPaths = new[]
             {
                 exeDir != null ? Path.Combine(exeDir, "tessdata") : "",
                 Path.Combine(baseDir, "tessdata"),
                 Path.Combine(curDir, "tessdata"),
+                @"C:\dev\ScreenTranslator\publish\tessdata",
                 @"C:\dev\ScreenTranslator\tessdata",
-                @"C:\dev\ScreenTranslator\publish\tessdata"
+                @"C:\dev\ScreenTranslator\bin\Debug\net10.0-windows10.0.19041.0\tessdata"
             };
 
             string? tessdataPath = null;
-            foreach (var path in searchPaths)
+            foreach (var path in tessSearchPaths)
             {
                 if (!string.IsNullOrEmpty(path) && Directory.Exists(path)
                     && File.Exists(Path.Combine(path, "eng.traineddata")))
@@ -57,17 +111,6 @@ public class OcrService : IDisposable
 
             if (tessdataPath != null)
             {
-                // Ensure native x64 directory is in PATH so tesseract50.dll can be loaded
-                string? nativeDir = exeDir != null ? Path.Combine(exeDir, "x64") : null;
-                if (nativeDir != null && Directory.Exists(nativeDir))
-                {
-                    string currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-                    if (!currentPath.Contains(nativeDir))
-                    {
-                        Environment.SetEnvironmentVariable("PATH", nativeDir + ";" + currentPath);
-                    }
-                }
-
                 _tesseractEngine = new TesseractEngine(tessdataPath, "eng", EngineMode.Default);
                 _tesseractEngine.DefaultPageSegMode = PageSegMode.Auto; // Auto is best for full paragraphs and multi-line UI
                 _initLog += $"[Tesseract OK: {tessdataPath}] ";
@@ -79,7 +122,8 @@ public class OcrService : IDisposable
         }
         catch (Exception ex)
         {
-            _initLog += $"[Tesseract Exception: {ex.Message}] ";
+            string err = ex.InnerException != null ? $"{ex.Message} -> {ex.InnerException.Message}" : ex.Message;
+            _initLog += $"[Tesseract Exception: {err}] ";
             _tesseractEngine = null;
         }
     }
