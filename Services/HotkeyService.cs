@@ -1,73 +1,90 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 
-namespace ScreenTranslator.Services;
-
-public class HotkeyService : IDisposable
+namespace ScreenTranslator.Services
 {
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
-    public const uint MOD_ALT = 0x0001;
-    public const uint MOD_CONTROL = 0x0002;
-    public const uint MOD_SHIFT = 0x0004;
-    public const uint MOD_WIN = 0x0008;
-    public const uint MOD_NOREPEAT = 0x4000;
-
-    public const uint VK_Q = 0x51;
-
-    private const int HOTKEY_ID = 9001;
-    private const int WM_HOTKEY = 0x0312;
-
-    private HwndSource? _hwndSource;
-    public event Action? HotkeyPressed;
-
-    public void Register()
+    public enum CaptureMode
     {
-        var parameters = new HwndSourceParameters("ScreenTranslatorHotkeyListener")
-        {
-            HwndSourceHook = HwndHook,
-            ParentWindow = new IntPtr(-3) // HWND_MESSAGE
-        };
-
-        _hwndSource = new HwndSource(parameters);
-
-        // Try Register Alt + Q with MOD_NOREPEAT
-        bool success = RegisterHotKey(_hwndSource.Handle, HOTKEY_ID, MOD_ALT | MOD_NOREPEAT, VK_Q);
-        if (!success)
-        {
-            // Fallback without MOD_NOREPEAT
-            success = RegisterHotKey(_hwndSource.Handle, HOTKEY_ID, MOD_ALT, VK_Q);
-        }
-
-        if (!success)
-        {
-            throw new InvalidOperationException("ホットキー(Alt+Q)の登録に失敗しました。他のアプリケーションが既に使用している可能性があります。");
-        }
+        Translate = 1,
+        Explain = 2
     }
 
-    private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    public class HotkeyService : IDisposable
     {
-        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
+        [DllImport("user32.dll")]
+        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+        [DllImport("user32.dll")]
+        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        private const uint MOD_ALT = 0x0001;
+        private const uint VK_Q = 0x51;
+        private const uint VK_W = 0x57;
+        
+        private const int HOTKEY_ID_TRANSLATE = 9001;
+        private const int HOTKEY_ID_EXPLAIN = 9002;
+
+        private HwndSource? _source;
+        private readonly List<int> _registeredIds = new List<int>();
+
+        public event Action<CaptureMode>? HotkeyPressed;
+
+        public record HotkeyRegistrationResult(bool TranslateRegistered, bool ExplainRegistered, string? ErrorMessage);
+
+        public HotkeyRegistrationResult Register()
         {
-            HotkeyPressed?.Invoke();
-            handled = true;
+            _source = new HwndSource(new HwndSourceParameters("dummy") { ParentWindow = new IntPtr(-3) }); // HWND_MESSAGE
+            _source.AddHook(HwndHook);
+
+            bool translateOk = RegisterHotKey(_source.Handle, HOTKEY_ID_TRANSLATE, MOD_ALT, VK_Q);
+            if (translateOk) _registeredIds.Add(HOTKEY_ID_TRANSLATE);
+
+            bool explainOk = RegisterHotKey(_source.Handle, HOTKEY_ID_EXPLAIN, MOD_ALT, VK_W);
+            if (explainOk) _registeredIds.Add(HOTKEY_ID_EXPLAIN);
+
+            string? error = null;
+            if (!translateOk && !explainOk) error = "Alt+Q と Alt+W の両方の登録に失敗しました。";
+            else if (!translateOk) error = "Alt+Q (翻訳) の登録に失敗しました。他のアプリで使用されている可能性があります。";
+            else if (!explainOk) error = "Alt+W (AI解説) の登録に失敗しました。他のアプリで使用されている可能性があります。";
+
+            return new HotkeyRegistrationResult(translateOk, explainOk, error);
         }
 
-        return IntPtr.Zero;
-    }
-
-    public void Dispose()
-    {
-        if (_hwndSource != null)
+        private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            UnregisterHotKey(_hwndSource.Handle, HOTKEY_ID);
-            _hwndSource.Dispose();
-            _hwndSource = null;
+            const int WM_HOTKEY = 0x0312;
+            if (msg == WM_HOTKEY)
+            {
+                int id = wParam.ToInt32();
+                if (id == HOTKEY_ID_TRANSLATE)
+                {
+                    HotkeyPressed?.Invoke(CaptureMode.Translate);
+                    handled = true;
+                }
+                else if (id == HOTKEY_ID_EXPLAIN)
+                {
+                    HotkeyPressed?.Invoke(CaptureMode.Explain);
+                    handled = true;
+                }
+            }
+            return IntPtr.Zero;
+        }
+
+        public void Dispose()
+        {
+            if (_source != null)
+            {
+                _source.RemoveHook(HwndHook);
+                foreach (int id in _registeredIds)
+                {
+                    UnregisterHotKey(_source.Handle, id);
+                }
+                _source.Dispose();
+                _source = null;
+                _registeredIds.Clear();
+            }
         }
     }
 }

@@ -30,7 +30,7 @@ public class OcrService : IDisposable
     {
         InitializeTesseract();
         InitializeWindowsOcr();
-        try { File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[OcrService InitLog] {_initLog}\n"); } catch { }
+        try { SafeLogger.Log($"[OcrService InitLog] {_initLog}"); } catch { }
     }
 
     private void InitializeTesseract()

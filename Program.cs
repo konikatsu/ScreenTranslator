@@ -8,20 +8,19 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        string logPath = @"C:\dev\ScreenTranslator\debug_startup.log";
         try
         {
-            File.AppendAllText(logPath, $"[Main Entry] Starting process at {DateTime.Now}, PID: {Environment.ProcessId}\n");
+            ScreenTranslator.Services.SafeLogger.Log($"[Main Entry] Starting process at {DateTime.Now}, PID: {Environment.ProcessId}");
             
             var app = new App();
             app.InitializeComponent();
-            File.AppendAllText(logPath, "[Main Entry] App initialized, calling app.Run()...\n");
+            ScreenTranslator.Services.SafeLogger.Log("[Main Entry] App initialized, calling app.Run()...");
             app.Run();
-            File.AppendAllText(logPath, "[Main Entry] app.Run() exited normally.\n");
+            ScreenTranslator.Services.SafeLogger.Log("[Main Entry] app.Run() exited normally.");
         }
         catch (Exception ex)
         {
-            File.AppendAllText(logPath, $"[Main Fatal Error] {ex}\n");
+            ScreenTranslator.Services.SafeLogger.Log(ex, "[Main Fatal Error]");
             System.Windows.MessageBox.Show($"致命的なエラー: {ex.Message}", "Screen Translator", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }

@@ -1,7 +1,6 @@
-using System;
+﻿using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms;
@@ -10,201 +9,201 @@ using ScreenTranslator.Views;
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 
-namespace ScreenTranslator;
-
-public partial class App : Application
+namespace ScreenTranslator
 {
-    private NotifyIcon? _notifyIcon;
-    private HotkeyService? _hotkeyService;
-    private OcrService? _ocrService;
-    private TranslationService? _translationService;
-    private bool _isCapturing = false;
-
-    protected override void OnStartup(StartupEventArgs e)
+    public partial class App : Application
     {
-        base.OnStartup(e);
+        private NotifyIcon? _notifyIcon;
+        private HotkeyService? _hotkeyService;
+        private OcrService? _ocrService;
+        private TranslationService? _translationService;
+        private AiExplainService? _aiExplainService;
+        
+        private bool _isProcessing = false;
+        private readonly CancellationTokenSource _appCts = new CancellationTokenSource();
 
-        AppDomain.CurrentDomain.UnhandledException += (s, args) =>
+        protected override void OnStartup(StartupEventArgs e)
         {
-            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[AppDomain Unhandled] {args.ExceptionObject}\n");
-        };
+            base.OnStartup(e);
 
-        DispatcherUnhandledException += (s, args) =>
-        {
-            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[Dispatcher Unhandled] {args.Exception}\n");
-        };
+            AppDomain.CurrentDomain.UnhandledException += (s, args) =>
+            {
+                SafeLogger.Log($"[AppDomain Unhandled] {args.ExceptionObject}");
+            };
 
-        try
-        {
-            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[Startup] Starting at {DateTime.Now}\n");
+            DispatcherUnhandledException += (s, args) =>
+            {
+                SafeLogger.Log($"[Dispatcher Unhandled] {args.Exception}");
+                args.Handled = true;
+            };
 
-            // Initialize Services
-            _ocrService = new OcrService();
-            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] OcrService initialized\n");
-
-            _translationService = new TranslationService();
-            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] TranslationService initialized\n");
-
-            _hotkeyService = new HotkeyService();
-            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] HotkeyService initialized\n");
-
-            // Setup Taskbar / System Tray Icon
-            SetupNotifyIcon();
-            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] NotifyIcon setup\n");
-
-            // Register Global Hotkey (Alt + Q)
             try
             {
+                SafeLogger.Log($"[Startup] Starting at {DateTime.Now}");
+
+                _ocrService = new OcrService();
+                _translationService = new TranslationService();
+                _aiExplainService = new AiExplainService();
+                _hotkeyService = new HotkeyService();
+
+                SetupNotifyIcon();
+
                 _hotkeyService.HotkeyPressed += OnHotkeyPressed;
-                _hotkeyService.Register();
-                File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", "[Startup] Hotkey registered\n");
+                var regResult = _hotkeyService.Register();
+                
+                if (regResult.ErrorMessage != null)
+                {
+                    SafeLogger.Log($"[Startup] Hotkey register warning: {regResult.ErrorMessage}");
+                    MessageBox.Show(regResult.ErrorMessage, "Screen Translator", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
             }
             catch (Exception ex)
             {
-                File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[Startup] Hotkey register failed: {ex.Message}\n");
-                MessageBox.Show($"ホットキー(Alt+Q)の登録に失敗しました: {ex.Message}", "Screen Translator", MessageBoxButton.OK, MessageBoxImage.Warning);
+                SafeLogger.Log(ex, "[Startup Error]");
+                MessageBox.Show($"起動時エラー: {ex.Message}", "Screen Translator", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-        catch (Exception ex)
+
+        private void SetupNotifyIcon()
         {
-            File.AppendAllText(@"C:\dev\ScreenTranslator\debug_startup.log", $"[Startup Error] {ex}\n");
-            MessageBox.Show($"起動時エラー: {ex.Message}", "Screen Translator", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void SetupNotifyIcon()
-    {
-        _notifyIcon = new NotifyIcon
-        {
-            Icon = CreateAppIcon(),
-            Text = "Screen Translator (Alt + Q で翻訳)",
-            Visible = true
-        };
-
-        var contextMenu = new ContextMenuStrip();
-        
-        var itemCapture = new ToolStripMenuItem("📸 キャプチャ＆翻訳 (Alt + Q)", null, (s, e) => StartCapture());
-        itemCapture.Font = new Font(itemCapture.Font, System.Drawing.FontStyle.Bold);
-        contextMenu.Items.Add(itemCapture);
-
-        contextMenu.Items.Add(new ToolStripSeparator());
-
-        var itemExit = new ToolStripMenuItem("❌ 終了", null, (s, e) => ExitApp());
-        contextMenu.Items.Add(itemExit);
-
-        _notifyIcon.ContextMenuStrip = contextMenu;
-        _notifyIcon.MouseClick += (s, e) =>
-        {
-            if (e.Button == MouseButtons.Left)
+            _notifyIcon = new NotifyIcon
             {
-                StartCapture();
-            }
-        };
+                Icon = SystemIcons.Application, // Temp icon
+                Text = "Screen Translator",
+                Visible = true
+            };
 
-        _notifyIcon.ShowBalloonTip(3000, "Screen Translator", "起動しました！「Alt + Q」またはアイコンクリックで翻訳を開始できます。", ToolTipIcon.Info);
-    }
+            var contextMenu = new ContextMenuStrip();
+            
+            var itemTranslate = new ToolStripMenuItem("📝 翻訳 (Alt + Q)", null, (s, e) => _ = RunCaptureAsync(CaptureMode.Translate));
+            itemTranslate.Font = new Font(itemTranslate.Font, System.Drawing.FontStyle.Bold);
+            contextMenu.Items.Add(itemTranslate);
 
-    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-    extern static bool DestroyIcon(IntPtr handle);
+            var itemExplain = new ToolStripMenuItem("🤖 AI解説 (Alt + W)", null, (s, e) => _ = RunCaptureAsync(CaptureMode.Explain));
+            contextMenu.Items.Add(itemExplain);
 
-    private Icon CreateAppIcon()
-    {
-        // Programmatically generate a crisp 32x32 icon with a translation logo
-        using var bitmap = new Bitmap(32, 32);
-        using var g = Graphics.FromImage(bitmap);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
+            contextMenu.Items.Add(new ToolStripSeparator());
 
-        // Background rounded badge
-        using var brush = new SolidBrush(Color.FromArgb(0, 180, 255));
-        g.FillEllipse(brush, 2, 2, 28, 28);
+            var itemSettings = new ToolStripMenuItem("⚙ 設定...", null, (s, e) => ShowSettings());
+            contextMenu.Items.Add(itemSettings);
 
-        // Text "文" or "T"
-        using var textBrush = new SolidBrush(Color.White);
-        using var font = new Font("Segoe UI", 12, System.Drawing.FontStyle.Bold);
-        var format = new StringFormat
-        {
-            Alignment = StringAlignment.Center,
-            LineAlignment = StringAlignment.Center
-        };
-        g.DrawString("訳", font, textBrush, new RectangleF(0, 0, 32, 32), format);
+            contextMenu.Items.Add(new ToolStripSeparator());
 
-        var hIcon = bitmap.GetHicon();
-        using var tempIcon = Icon.FromHandle(hIcon);
-        var finalIcon = (Icon)tempIcon.Clone();
-        DestroyIcon(hIcon);
-        return finalIcon;
-    }
+            var itemExit = new ToolStripMenuItem("❌ 終了", null, (s, e) => ExitApp());
+            contextMenu.Items.Add(itemExit);
 
-    private void OnHotkeyPressed()
-    {
-        Dispatcher.Invoke(StartCapture);
-    }
-
-    private void StartCapture()
-    {
-        if (_isCapturing) return;
-        _isCapturing = true;
-
-        var overlay = new OverlayWindow();
-        overlay.Snipped += OnAreaSnipped;
-        overlay.Closed += (s, e) => _isCapturing = false;
-        overlay.Show();
-    }
-
-    private async void OnAreaSnipped(Bitmap bitmap, System.Windows.Point mousePosition)
-    {
-        var translationWindow = new TranslationWindow();
-        translationWindow.SetContent("認識中...", "翻訳しています...");
-        translationWindow.ShowAt(mousePosition.X, mousePosition.Y);
-
-        try
-        {
-            // 1. Perform OCR
-            string ocrText = string.Empty;
-            if (_ocrService != null)
-            {
-                ocrText = await _ocrService.RecognizeTextAsync(bitmap);
-            }
-
-            if (string.IsNullOrWhiteSpace(ocrText))
-            {
-                translationWindow.SetContent("(文字が検出されませんでした)", "画面内の文字を認識できませんでした。もう少し広い範囲を選択してみてください。");
-                return;
-            }
-
-            // 2. Perform Translation
-            string translation = string.Empty;
-            if (_translationService != null)
-            {
-                translation = await _translationService.TranslateToJapaneseAsync(ocrText);
-            }
-
-            // 3. Update UI
-            translationWindow.SetContent(ocrText, translation);
+            _notifyIcon.ContextMenuStrip = contextMenu;
         }
-        catch (Exception ex)
-        {
-            translationWindow.SetContent("エラー", $"処理中にエラーが発生しました: {ex.Message}");
-        }
-        finally
-        {
-            bitmap.Dispose();
-        }
-    }
 
-    private void ExitApp()
-    {
-        _notifyIcon?.Dispose();
-        _hotkeyService?.Dispose();
-        _ocrService?.Dispose();
-        Shutdown();
-    }
+        private void ShowSettings()
+        {
+            new SettingsWindow().Show();
+        }
 
-    protected override void OnExit(ExitEventArgs e)
-    {
-        _notifyIcon?.Dispose();
-        _hotkeyService?.Dispose();
-        _ocrService?.Dispose();
-        base.OnExit(e);
+        private void OnHotkeyPressed(CaptureMode mode)
+        {
+            Dispatcher.Invoke(() => _ = RunCaptureAsync(mode));
+        }
+
+        private async Task RunCaptureAsync(CaptureMode mode)
+        {
+            if (_isProcessing) return;
+            _isProcessing = true;
+            Bitmap? capturedBitmap = null;
+
+            try
+            {
+                if (mode == CaptureMode.Explain)
+                {
+                    var settings = SettingsManager.LoadSettings();
+                    if (string.IsNullOrEmpty(settings.EncryptedGeminiApiKey))
+                    {
+                        ShowSettings();
+                        return; // user needs to set API key first
+                    }
+                }
+
+                var overlay = new OverlayWindow();
+                var tcs = new TaskCompletionSource<(Bitmap Bitmap, System.Windows.Point Position)?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                
+                // Overlay completion handlers
+                overlay.Snipped += (bmp, pos) => tcs.TrySetResult((bmp, pos));
+                overlay.Closed += (s, e) => tcs.TrySetResult(null);
+
+                using var reg = _appCts.Token.Register(() => { tcs.TrySetResult(null); overlay.Close(); });
+                
+                overlay.Show();
+                var result = await tcs.Task;
+                overlay.Close();
+
+                if (result == null) return; // Esc or Cancelled
+
+                capturedBitmap = result.Value.Bitmap;
+                var pos = result.Value.Position;
+
+                var resultWindow = new TranslationWindow();
+                resultWindow.SetLoadingMode("⏳ 処理中...", "AIに問い合わせ中...");
+                resultWindow.ShowAt(pos.X, pos.Y);
+
+                // Setup cancellation for the API call bound to the result window
+                using var opCts = CancellationTokenSource.CreateLinkedTokenSource(_appCts.Token);
+                resultWindow.Closed += (s, e) => opCts.Cancel();
+
+                try
+                {
+                    if (mode == CaptureMode.Translate)
+                    {
+                        string ocrText = await _ocrService!.RecognizeTextAsync(capturedBitmap);
+                        if (string.IsNullOrWhiteSpace(ocrText))
+                        {
+                            resultWindow.SetTranslateMode("(なし)", "文字が検出されませんでした。");
+                        }
+                        else
+                        {
+                            string translation = await _translationService!.TranslateToJapaneseAsync(ocrText);
+                            resultWindow.SetTranslateMode(ocrText, translation);
+                        }
+                    }
+                    else if (mode == CaptureMode.Explain)
+                    {
+                        string explanation = await _aiExplainService!.ExplainAsync(capturedBitmap, opCts.Token);
+                        resultWindow.SetExplainMode(explanation);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // User closed the window while processing, silently exit
+                }
+                catch (Exception ex)
+                {
+                    SafeLogger.Log(ex, "Error during processing");
+                    resultWindow.SetLoadingMode("❌ エラー", ex.Message);
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeLogger.Log(ex, "Fatal error in RunCaptureAsync");
+            }
+            finally
+            {
+                capturedBitmap?.Dispose();
+                _isProcessing = false;
+            }
+        }
+
+        private void ExitApp()
+        {
+            _appCts.Cancel();
+            _notifyIcon?.Dispose();
+            _hotkeyService?.Dispose();
+            _ocrService?.Dispose();
+            Shutdown();
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            ExitApp();
+            base.OnExit(e);
+        }
     }
 }

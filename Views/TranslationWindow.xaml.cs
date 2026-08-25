@@ -1,91 +1,108 @@
-using System;
+﻿using System;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using Clipboard = System.Windows.Clipboard;
 
-namespace ScreenTranslator.Views;
-
-public partial class TranslationWindow : Window
+namespace ScreenTranslator.Views
 {
-    public TranslationWindow()
+    public partial class TranslationWindow : Window
     {
-        InitializeComponent();
-    }
+        private bool _isManualResized = false;
 
-    public void SetContent(string original, string translation)
-    {
-        TxtOriginal.Text = string.IsNullOrWhiteSpace(original) ? "(テキストを検出できませんでした)" : original;
-        TxtTranslation.Text = string.IsNullOrWhiteSpace(translation) ? "(翻訳できませんでした)" : translation;
-    }
-
-    public void ShowAt(double targetX, double targetY)
-    {
-        // Position window near cursor, adjusting to stay on screen
-        double screenWidth = SystemParameters.VirtualScreenWidth;
-        double screenHeight = SystemParameters.VirtualScreenHeight;
-        double screenLeft = SystemParameters.VirtualScreenLeft;
-        double screenTop = SystemParameters.VirtualScreenTop;
-
-        double desiredLeft = targetX + 15;
-        double desiredTop = targetY + 15;
-
-        // Estimate size if not yet rendered
-        double estimatedWidth = 380;
-        double estimatedHeight = 220;
-
-        if (desiredLeft + estimatedWidth > screenLeft + screenWidth)
+        public TranslationWindow()
         {
-            desiredLeft = targetX - estimatedWidth - 10;
+            InitializeComponent();
         }
 
-        if (desiredTop + estimatedHeight > screenTop + screenHeight)
+        public void SetTranslateMode(string original, string translated)
         {
-            desiredTop = targetY - estimatedHeight - 10;
-        }
-
-        Left = Math.Max(screenLeft, desiredLeft);
-        Top = Math.Max(screenTop, desiredTop);
-
-        Show();
-        Activate();
-    }
-
-    // Enable drag to move the window
-    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton == MouseButton.Left)
-        {
-            DragMove();
-        }
-    }
-
-    // Close on Escape key
-    private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
-        {
-            Close();
-        }
-    }
-
-    private void BtnCopy_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (!string.IsNullOrEmpty(TxtTranslation.Text))
+            TxtHeader.Text = "📝 翻訳";
+            OriginalSection.Visibility = Visibility.Visible;
+            TxtOriginal.Text = original;
+            TxtTranslation.Text = translated;
+            
+            if (!_isManualResized)
             {
-                Clipboard.SetText(TxtTranslation.Text);
-                BtnCopy.Content = "✓ 完了";
+                this.MaxWidth = 480;
+                ScrollTranslation.MaxHeight = 200;
             }
         }
-        catch
-        {
-            // Clipboard error handling
-        }
-    }
 
-    private void BtnClose_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
+        public void SetExplainMode(string explanation)
+        {
+            TxtHeader.Text = "🤖 AI解説";
+            OriginalSection.Visibility = Visibility.Collapsed;
+            TxtTranslation.Text = explanation;
+            
+            if (!_isManualResized)
+            {
+                this.MaxWidth = 560;
+                ScrollTranslation.MaxHeight = 480;
+            }
+        }
+
+        public void SetLoadingMode(string title, string message)
+        {
+            TxtHeader.Text = title;
+            OriginalSection.Visibility = Visibility.Collapsed;
+            TxtTranslation.Text = message;
+        }
+
+        // Keep backwards compatibility for App.xaml.cs transition
+        public void SetContent(string original, string translated)
+        {
+            SetTranslateMode(original, translated);
+        }
+
+        public void ShowAt(double x, double y)
+        {
+            // Initial positioning logic
+            this.WindowStartupLocation = WindowStartupLocation.Manual;
+            
+            double estWidth = 380;
+            double estHeight = 220;
+            
+            double screenWidth = SystemParameters.PrimaryScreenWidth;
+            double screenHeight = SystemParameters.PrimaryScreenHeight;
+            
+            double targetX = x;
+            double targetY = y + 20; // Slightly below mouse
+            
+            if (targetX + estWidth > screenWidth) targetX = screenWidth - estWidth;
+            if (targetY + estHeight > screenHeight) targetY = y - estHeight - 20;
+            
+            this.Left = targetX;
+            this.Top = targetY;
+            this.Show();
+        }
+
+        private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            this.DragMove();
+        }
+
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            this.Close();
+        }
+
+        private void ResizeThumb_DragDelta(object sender, DragDeltaEventArgs e)
+        {
+            if (!_isManualResized)
+            {
+                _isManualResized = true;
+                this.SizeToContent = SizeToContent.Manual;
+                this.Width = this.ActualWidth;
+                this.Height = this.ActualHeight;
+                this.MaxWidth = double.PositiveInfinity;
+                ScrollTranslation.MaxHeight = double.PositiveInfinity;
+            }
+
+            double newWidth = this.Width + e.HorizontalChange;
+            double newHeight = this.Height + e.VerticalChange;
+
+            if (newWidth > 150) this.Width = newWidth;
+            if (newHeight > 100) this.Height = newHeight;
+        }
     }
 }
