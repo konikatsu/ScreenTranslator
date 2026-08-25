@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
@@ -35,6 +35,7 @@ namespace ScreenTranslator.Services
 
         public HotkeyRegistrationResult Register()
         {
+            Dispose(); // 既存の登録とハンドルを破棄
             _source = new HwndSource(new HwndSourceParameters("dummy") { ParentWindow = new IntPtr(-3) }); // HWND_MESSAGE
             _source.AddHook(HwndHook);
 

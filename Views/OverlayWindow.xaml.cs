@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Threading.Tasks;
@@ -110,8 +110,8 @@ public partial class OverlayWindow : Window
                     g.CopyFromScreen(physX, physY, 0, 0, new System.Drawing.Size(physW, physH), CopyPixelOperation.SourceCopy);
                 }
 
-                Close();
                 Snipped?.Invoke(bitmap, mouseLogicalPos);
+            this.Close();
             }
             else
             {
@@ -128,3 +128,4 @@ public partial class OverlayWindow : Window
         }
     }
 }
+

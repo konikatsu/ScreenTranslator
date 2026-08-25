@@ -48,7 +48,6 @@ namespace ScreenTranslator.Views
             TxtTranslation.Text = message;
         }
 
-        // Keep backwards compatibility for App.xaml.cs transition
         public void SetContent(string original, string translated)
         {
             SetTranslateMode(original, translated);
@@ -56,20 +55,20 @@ namespace ScreenTranslator.Views
 
         public void ShowAt(double x, double y)
         {
-            // Initial positioning logic
             this.WindowStartupLocation = WindowStartupLocation.Manual;
             
             double estWidth = 380;
             double estHeight = 220;
             
-            double screenWidth = SystemParameters.PrimaryScreenWidth;
-            double screenHeight = SystemParameters.PrimaryScreenHeight;
-            
             double targetX = x;
-            double targetY = y + 20; // Slightly below mouse
+            double targetY = y + 20;
             
-            if (targetX + estWidth > screenWidth) targetX = screenWidth - estWidth;
-            if (targetY + estHeight > screenHeight) targetY = y - estHeight - 20;
+            var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)x, (int)y));
+            
+            if (targetX + estWidth > screen.Bounds.Right) targetX = screen.Bounds.Right - estWidth;
+            if (targetY + estHeight > screen.Bounds.Bottom) targetY = screen.Bounds.Bottom - estHeight - 20;
+            if (targetX < screen.Bounds.Left) targetX = screen.Bounds.Left;
+            if (targetY < screen.Bounds.Top) targetY = screen.Bounds.Top;
             
             this.Left = targetX;
             this.Top = targetY;

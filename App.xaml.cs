@@ -134,7 +134,7 @@ namespace ScreenTranslator
                 
                 overlay.Show();
                 var result = await tcs.Task;
-                overlay.Close();
+                // DO NOT overlay.Close() here; OverlayWindow closes itself, avoiding double close InvalidOperationException
 
                 if (result == null) return; // Esc or Cancelled
 
@@ -145,9 +145,15 @@ namespace ScreenTranslator
                 resultWindow.SetLoadingMode("⏳ 処理中...", "AIに問い合わせ中...");
                 resultWindow.ShowAt(pos.X, pos.Y);
 
-                // Setup cancellation for the API call bound to the result window
-                using var opCts = CancellationTokenSource.CreateLinkedTokenSource(_appCts.Token);
-                resultWindow.Closed += (s, e) => opCts.Cancel();
+                var opCts = CancellationTokenSource.CreateLinkedTokenSource(_appCts.Token);
+                EventHandler closedHandler = null!;
+                closedHandler = (s, e) => 
+                {
+                    resultWindow.Closed -= closedHandler;
+                    try { if (!opCts.IsCancellationRequested) opCts.Cancel(); } catch { }
+                    opCts.Dispose();
+                };
+                resultWindow.Closed += closedHandler;
 
                 try
                 {
@@ -160,7 +166,7 @@ namespace ScreenTranslator
                         }
                         else
                         {
-                            string translation = await _translationService!.TranslateToJapaneseAsync(ocrText);
+                            string translation = await _translationService!.TranslateToJapaneseAsync(ocrText, opCts.Token);
                             resultWindow.SetTranslateMode(ocrText, translation);
                         }
                     }
