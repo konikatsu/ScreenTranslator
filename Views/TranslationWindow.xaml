@@ -7,41 +7,57 @@
         AllowsTransparency="True" 
         Background="Transparent"
         Topmost="True" 
-        ShowInTaskbar="False">
-    <Border Background="#2D2D30" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+        ShowInTaskbar="False"
+        KeyDown="Window_KeyDown">
+    <Border Background="#2D2D30" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="6" Padding="10">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             
-            <!-- Header for dragging -->
-            <Grid Grid.Row="0" Margin="0,0,0,10" Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown" Cursor="SizeAll">
-                <TextBlock x:Name="TxtHeader" Text="🤖 AI解説" Foreground="#AAAAAA" FontSize="12" FontWeight="Bold" HorizontalAlignment="Left"/>
-                <Button Content="✕" Width="20" Height="20" HorizontalAlignment="Right" VerticalAlignment="Top" 
-                        Background="Transparent" Foreground="#AAAAAA" BorderThickness="0" 
-                        Click="CloseButton_Click" Cursor="Hand"/>
+            <!-- Header for dragging & Actions -->
+            <Grid Grid.Row="0" Margin="0,0,0,8" Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown" Cursor="SizeAll">
+                <TextBlock x:Name="TxtHeader" Text="🤖 AI解説" Foreground="#AAAAAA" FontSize="12" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="BtnCopy" Content="📋 コピー" Height="22" Padding="6,0" Margin="0,0,6,0"
+                            Background="#3A3A45" Foreground="#D4D4D4" FontSize="11" BorderThickness="0" 
+                            Click="CopyButton_Click" Cursor="Hand"/>
+                    <Button Content="✕" Width="22" Height="22" 
+                            Background="Transparent" Foreground="#AAAAAA" FontSize="12" BorderThickness="0" 
+                            Click="CloseButton_Click" Cursor="Hand"/>
+                </StackPanel>
             </Grid>
             
-            <StackPanel Grid.Row="1">
+            <!-- Content Area (Grid layout so ScrollViewer is constrained by Row Height="*") -->
+            <Grid Grid.Row="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
                 <!-- Original Text Section -->
-                <Border x:Name="OriginalSection" Background="#1E1E1E" CornerRadius="4" Padding="8" Margin="0,0,0,10">
-                    <TextBlock x:Name="TxtOriginal" Foreground="#D4D4D4" TextWrapping="Wrap" FontSize="12"/>
+                <Border x:Name="OriginalSection" Grid.Row="0" Background="#1E1E1E" CornerRadius="4" Padding="8" Margin="0,0,0,8">
+                    <TextBox x:Name="TxtOriginal" Foreground="#D4D4D4" TextWrapping="Wrap" FontSize="12"
+                             Background="Transparent" BorderThickness="0" IsReadOnly="True" IsUndoEnabled="False"
+                             SelectionBrush="#007ACC" SelectionOpacity="0.4"/>
                 </Border>
                 
                 <!-- Translated/Explained Text Section -->
-                <ScrollViewer x:Name="ScrollTranslation" VerticalScrollBarVisibility="Auto">
-                    <TextBlock x:Name="TxtTranslation" Foreground="#4EC9B0" TextWrapping="Wrap" FontSize="14" FontWeight="Bold"/>
+                <ScrollViewer x:Name="ScrollTranslation" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <TextBox x:Name="TxtTranslation" Foreground="#4EC9B0" TextWrapping="Wrap" FontSize="13" FontWeight="Bold"
+                             Background="Transparent" BorderThickness="0" IsReadOnly="True" IsUndoEnabled="False"
+                             SelectionBrush="#007ACC" SelectionOpacity="0.4"/>
                 </ScrollViewer>
-            </StackPanel>
+            </Grid>
             
             <!-- Resize Thumb (Bottom Right) -->
-            <Thumb Grid.Row="1" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" 
-                   Cursor="SizeNWSE" DragDelta="ResizeThumb_DragDelta" Margin="0,0,-8,-8">
+            <Thumb Grid.Row="1" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Bottom" 
+                   Cursor="SizeNWSE" DragDelta="ResizeThumb_DragDelta" Margin="0,0,-6,-6">
                 <Thumb.Template>
                     <ControlTemplate>
                         <Grid Background="Transparent">
-                            <Path Data="M 0 10 L 10 0 L 10 10 Z" Fill="#555555" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                            <Path Data="M 0 12 L 12 0 L 12 12 Z" Fill="#666666" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
                         </Grid>
                     </ControlTemplate>
                 </Thumb.Template>

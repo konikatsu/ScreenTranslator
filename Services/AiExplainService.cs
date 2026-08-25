@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,7 +12,9 @@ namespace ScreenTranslator.Services
 {
     public class AiExplainService
     {
+        public const string DefaultModelName = "gemini-2.5-flash";
         private static readonly HttpClient _httpClient = new HttpClient();
+        private static readonly Regex _modelNameValidator = new Regex(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
 
         public async Task<string> ExplainAsync(Bitmap originalBitmap, CancellationToken cancellationToken)
         {
@@ -23,13 +26,17 @@ namespace ScreenTranslator.Services
                 return "APIキーが設定されていません。システムトレイのアイコンから「設定...」を開いてGemini APIキーを登録してください。";
             }
 
-            string modelName = string.IsNullOrWhiteSpace(settings.GeminiModel) ? "gemini-3.7-flash" : settings.GeminiModel;
-            string url = $"https://generativelanguage.googleapis.com/v1beta/models/{modelName}:generateContent";
+            string modelName = string.IsNullOrWhiteSpace(settings.GeminiModel) ? DefaultModelName : settings.GeminiModel.Trim();
+            if (!_modelNameValidator.IsMatch(modelName))
+            {
+                modelName = DefaultModelName;
+            }
+
+            string url = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(modelName)}:generateContent";
 
             string base64Image;
             try
             {
-                // Resize if too large
                 using var processedBmp = ResizeIfTooLarge(originalBitmap, 2048);
                 using var ms = new MemoryStream();
                 processedBmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
@@ -74,13 +81,12 @@ namespace ScreenTranslator.Services
                 cts.CancelAfter(TimeSpan.FromSeconds(30)); // 30s timeout
 
                 using var response = await _httpClient.SendAsync(request, cts.Token);
-                
-                string responseString = await response.Content.ReadAsStringAsync();
+                string responseString = await response.Content.ReadAsStringAsync(cts.Token);
                 
                 if (!response.IsSuccessStatusCode)
                 {
                     SafeLogger.Log($"[Gemini Error] HTTP {response.StatusCode}: {responseString}");
-                    return $"APIエラーが発生しました (HTTP {(int)response.StatusCode})。\nキーが間違っているか、モデル名が誤っている可能性があります。";
+                    return $"APIエラーが発生しました (HTTP {(int)response.StatusCode})。\nキーが間違っているか、モデル名が無効な可能性があります。";
                 }
 
                 using var doc = JsonDocument.Parse(responseString);
@@ -108,10 +114,9 @@ namespace ScreenTranslator.Services
             }
             catch (OperationCanceledException)
             {
-                // Thrown if cancellationToken is canceled (user closed dialog) or 30s timeout
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    throw; // Let App.xaml.cs handle user cancellation gracefully
+                    throw;
                 }
                 return "APIリクエストがタイムアウトしました (30秒)。";
             }
@@ -126,7 +131,7 @@ namespace ScreenTranslator.Services
         {
             if (src.Width <= maxDimension && src.Height <= maxDimension)
             {
-                return new Bitmap(src); // clone to return independent instance
+                return new Bitmap(src);
             }
 
             float scale = Math.Min((float)maxDimension / src.Width, (float)maxDimension / src.Height);

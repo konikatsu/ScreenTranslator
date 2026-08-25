@@ -68,10 +68,13 @@ namespace ScreenTranslator
         {
             _notifyIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Application, // Temp icon
+                Icon = SystemIcons.Application,
                 Text = "Screen Translator",
                 Visible = true
             };
+
+            // Double click tray icon to trigger translation
+            _notifyIcon.DoubleClick += (s, e) => _ = RunCaptureAsync(CaptureMode.Translate);
 
             var contextMenu = new ContextMenuStrip();
             
@@ -126,15 +129,19 @@ namespace ScreenTranslator
                 var overlay = new OverlayWindow();
                 var tcs = new TaskCompletionSource<(Bitmap Bitmap, System.Windows.Point Position)?>(TaskCreationOptions.RunContinuationsAsynchronously);
                 
-                // Overlay completion handlers
-                overlay.Snipped += (bmp, pos) => tcs.TrySetResult((bmp, pos));
+                overlay.Snipped += (bmp, pos) =>
+                {
+                    if (!tcs.TrySetResult((bmp, pos)))
+                    {
+                        bmp.Dispose(); // Prevent leak if race
+                    }
+                };
                 overlay.Closed += (s, e) => tcs.TrySetResult(null);
 
                 using var reg = _appCts.Token.Register(() => { tcs.TrySetResult(null); overlay.Close(); });
                 
                 overlay.Show();
                 var result = await tcs.Task;
-                // DO NOT overlay.Close() here; OverlayWindow closes itself, avoiding double close InvalidOperationException
 
                 if (result == null) return; // Esc or Cancelled
 
@@ -149,9 +156,8 @@ namespace ScreenTranslator
                 EventHandler closedHandler = null!;
                 closedHandler = (s, e) => 
                 {
-                    resultWindow.Closed -= closedHandler;
+                    // Only request cancellation when window is closed; DO NOT dispose here
                     try { if (!opCts.IsCancellationRequested) opCts.Cancel(); } catch { }
-                    opCts.Dispose();
                 };
                 resultWindow.Closed += closedHandler;
 
@@ -162,18 +168,18 @@ namespace ScreenTranslator
                         string ocrText = await _ocrService!.RecognizeTextAsync(capturedBitmap);
                         if (string.IsNullOrWhiteSpace(ocrText))
                         {
-                            resultWindow.SetTranslateMode("(なし)", "文字が検出されませんでした。");
+                            if (resultWindow.IsLoaded) resultWindow.SetTranslateMode("(なし)", "文字が検出されませんでした。");
                         }
                         else
                         {
                             string translation = await _translationService!.TranslateToJapaneseAsync(ocrText, opCts.Token);
-                            resultWindow.SetTranslateMode(ocrText, translation);
+                            if (resultWindow.IsLoaded) resultWindow.SetTranslateMode(ocrText, translation);
                         }
                     }
                     else if (mode == CaptureMode.Explain)
                     {
                         string explanation = await _aiExplainService!.ExplainAsync(capturedBitmap, opCts.Token);
-                        resultWindow.SetExplainMode(explanation);
+                        if (resultWindow.IsLoaded) resultWindow.SetExplainMode(explanation);
                     }
                 }
                 catch (OperationCanceledException)
@@ -183,7 +189,12 @@ namespace ScreenTranslator
                 catch (Exception ex)
                 {
                     SafeLogger.Log(ex, "Error during processing");
-                    resultWindow.SetLoadingMode("❌ エラー", ex.Message);
+                    if (resultWindow.IsLoaded) resultWindow.SetLoadingMode("❌ エラー", SafeLogger.Sanitize(ex.Message));
+                }
+                finally
+                {
+                    resultWindow.Closed -= closedHandler;
+                    opCts.Dispose(); // Disposed strictly after async operations complete
                 }
             }
             catch (Exception ex)
