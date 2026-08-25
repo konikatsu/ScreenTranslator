@@ -101,7 +101,6 @@ namespace ScreenTranslator
 
         private void ShowSettings()
         {
-            // Prevent multiple settings windows
             foreach (Window window in Current.Windows)
             {
                 if (window is SettingsWindow)
@@ -174,9 +173,6 @@ namespace ScreenTranslator
                 {
                     if (mode == CaptureMode.Translate)
                     {
-                        // Assume OcrService doesn't take CT, but if it does, pass opCts.Token.
-                        // Actually, let's wrap it in Task.Run with cancellation if possible, 
-                        // but for now we just call it.
                         string ocrText = await _ocrService!.RecognizeTextAsync(capturedBitmap);
                         opCts.Token.ThrowIfCancellationRequested();
 
@@ -227,8 +223,8 @@ namespace ScreenTranslator
             if (_isShuttingDown) return;
             _isShuttingDown = true;
             
-            _appCts.Cancel();
-            _appCts.Dispose();
+            try { _appCts.Cancel(); } catch { }
+            // Let the process exit clean up the CTS to avoid races with inflight operations.
             
             if (_notifyIcon != null)
             {

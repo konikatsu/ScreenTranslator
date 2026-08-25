@@ -34,7 +34,6 @@ namespace ScreenTranslator.Services
                 
                 string responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 
-                // Response can be either ["translated block"] OR [["trans line 1", "orig 1"], ["trans line 2", "orig 2"]]
                 using var doc = JsonDocument.Parse(responseBody);
                 var root = doc.RootElement;
                 
@@ -45,22 +44,20 @@ namespace ScreenTranslator.Services
                     {
                         if (element.ValueKind == JsonValueKind.String)
                         {
-                            // Flat array
                             sb.Append(element.GetString());
                         }
                         else if (element.ValueKind == JsonValueKind.Array && element.GetArrayLength() > 0)
                         {
-                            // Nested array, first item is the translated text
                             var innerElement = element[0];
                             if (innerElement.ValueKind == JsonValueKind.String)
                             {
-                                sb.Append(innerElement.GetString());
+                                sb.AppendLine(innerElement.GetString());
                             }
                         }
                     }
                     if (sb.Length > 0)
                     {
-                        return sb.ToString();
+                        return sb.ToString().Trim();
                     }
                 }
                 
