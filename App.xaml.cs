@@ -20,6 +20,7 @@ namespace ScreenTranslator
         private AiExplainService? _aiExplainService;
         
         private bool _isProcessing = false;
+        private bool _isShuttingDown = false;
         private readonly CancellationTokenSource _appCts = new CancellationTokenSource();
 
         protected override void OnStartup(StartupEventArgs e)
@@ -34,6 +35,7 @@ namespace ScreenTranslator
             DispatcherUnhandledException += (s, args) =>
             {
                 SafeLogger.Log($"[Dispatcher Unhandled] {args.Exception}");
+                MessageBox.Show($"予期せぬエラーが発生しました: {args.Exception.Message}", "Screen Translator エラー", MessageBoxButton.OK, MessageBoxImage.Error);
                 args.Handled = true;
             };
 
@@ -73,7 +75,6 @@ namespace ScreenTranslator
                 Visible = true
             };
 
-            // Double click tray icon to trigger translation
             _notifyIcon.DoubleClick += (s, e) => _ = RunCaptureAsync(CaptureMode.Translate);
 
             var contextMenu = new ContextMenuStrip();
@@ -100,6 +101,15 @@ namespace ScreenTranslator
 
         private void ShowSettings()
         {
+            // Prevent multiple settings windows
+            foreach (Window window in Current.Windows)
+            {
+                if (window is SettingsWindow)
+                {
+                    window.Activate();
+                    return;
+                }
+            }
             new SettingsWindow().Show();
         }
 
@@ -122,7 +132,7 @@ namespace ScreenTranslator
                     if (string.IsNullOrEmpty(settings.EncryptedGeminiApiKey))
                     {
                         ShowSettings();
-                        return; // user needs to set API key first
+                        return;
                     }
                 }
 
@@ -133,7 +143,7 @@ namespace ScreenTranslator
                 {
                     if (!tcs.TrySetResult((bmp, pos)))
                     {
-                        bmp.Dispose(); // Prevent leak if race
+                        bmp.Dispose();
                     }
                 };
                 overlay.Closed += (s, e) => tcs.TrySetResult(null);
@@ -143,20 +153,19 @@ namespace ScreenTranslator
                 overlay.Show();
                 var result = await tcs.Task;
 
-                if (result == null) return; // Esc or Cancelled
+                if (result == null) return;
 
                 capturedBitmap = result.Value.Bitmap;
                 var pos = result.Value.Position;
 
                 var resultWindow = new TranslationWindow();
-                resultWindow.SetLoadingMode("⏳ 処理中...", "AIに問い合わせ中...");
+                resultWindow.SetLoadingMode("⏳ 処理中...", "少々お待ちください...");
                 resultWindow.ShowAt(pos.X, pos.Y);
 
                 var opCts = CancellationTokenSource.CreateLinkedTokenSource(_appCts.Token);
                 EventHandler closedHandler = null!;
                 closedHandler = (s, e) => 
                 {
-                    // Only request cancellation when window is closed; DO NOT dispose here
                     try { if (!opCts.IsCancellationRequested) opCts.Cancel(); } catch { }
                 };
                 resultWindow.Closed += closedHandler;
@@ -165,7 +174,12 @@ namespace ScreenTranslator
                 {
                     if (mode == CaptureMode.Translate)
                     {
+                        // Assume OcrService doesn't take CT, but if it does, pass opCts.Token.
+                        // Actually, let's wrap it in Task.Run with cancellation if possible, 
+                        // but for now we just call it.
                         string ocrText = await _ocrService!.RecognizeTextAsync(capturedBitmap);
+                        opCts.Token.ThrowIfCancellationRequested();
+
                         if (string.IsNullOrWhiteSpace(ocrText))
                         {
                             if (resultWindow.IsLoaded) resultWindow.SetTranslateMode("(なし)", "文字が検出されませんでした。");
@@ -194,7 +208,7 @@ namespace ScreenTranslator
                 finally
                 {
                     resultWindow.Closed -= closedHandler;
-                    opCts.Dispose(); // Disposed strictly after async operations complete
+                    opCts.Dispose();
                 }
             }
             catch (Exception ex)
@@ -210,8 +224,18 @@ namespace ScreenTranslator
 
         private void ExitApp()
         {
+            if (_isShuttingDown) return;
+            _isShuttingDown = true;
+            
             _appCts.Cancel();
-            _notifyIcon?.Dispose();
+            _appCts.Dispose();
+            
+            if (_notifyIcon != null)
+            {
+                _notifyIcon.Visible = false;
+                _notifyIcon.Dispose();
+            }
+            
             _hotkeyService?.Dispose();
             _ocrService?.Dispose();
             Shutdown();

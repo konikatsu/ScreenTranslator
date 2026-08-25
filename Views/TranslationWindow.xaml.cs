@@ -2,6 +2,7 @@
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 
 namespace ScreenTranslator.Views
@@ -25,8 +26,9 @@ namespace ScreenTranslator.Views
             if (!_isManualResized)
             {
                 this.Width = 380;
-                this.MaxHeight = 350;
+                ScrollTranslation.MaxHeight = 250;
             }
+            EnsureInBounds();
         }
 
         public void SetExplainMode(string explanation)
@@ -38,8 +40,9 @@ namespace ScreenTranslator.Views
             if (!_isManualResized)
             {
                 this.Width = 480;
-                this.MaxHeight = 520;
+                ScrollTranslation.MaxHeight = 450;
             }
+            EnsureInBounds();
         }
 
         public void SetLoadingMode(string title, string message)
@@ -58,10 +61,10 @@ namespace ScreenTranslator.Views
         {
             this.WindowStartupLocation = WindowStartupLocation.Manual;
             
-            double targetWidth = this.Width > 0 ? this.Width : 380;
-            double targetHeight = 220;
-            
-            // Get DPI scale
+            // Force HWND creation to correctly obtain DPI BEFORE showing
+            var helper = new WindowInteropHelper(this);
+            helper.EnsureHandle();
+
             double dpiScaleX = 1.0;
             double dpiScaleY = 1.0;
             var source = PresentationSource.FromVisual(this);
@@ -71,22 +74,23 @@ namespace ScreenTranslator.Views
                 dpiScaleY = source.CompositionTarget.TransformToDevice.M22;
             }
 
-            // Convert logical position (DIP) to physical screen point for Screen.FromPoint
             int physX = (int)(x * dpiScaleX);
             int physY = (int)(y * dpiScaleY);
             var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(physX, physY));
 
-            // Convert monitor bounds back to DIP
             double screenLeftDIP = screen.Bounds.Left / dpiScaleX;
             double screenTopDIP = screen.Bounds.Top / dpiScaleY;
             double screenRightDIP = screen.Bounds.Right / dpiScaleX;
             double screenBottomDIP = screen.Bounds.Bottom / dpiScaleY;
 
+            double targetWidth = this.Width;
+            double targetHeight = 220; // estimate
+
             double targetX = x;
             double targetY = y + 20;
 
             if (targetX + targetWidth > screenRightDIP) targetX = screenRightDIP - targetWidth - 10;
-            if (targetY + targetHeight > screenBottomDIP) targetY = y - targetHeight - 20;
+            if (targetY + targetHeight > screenBottomDIP) targetY = screenBottomDIP - targetHeight - 20;
             if (targetX < screenLeftDIP) targetX = screenLeftDIP + 10;
             if (targetY < screenTopDIP) targetY = screenTopDIP + 10;
 
@@ -94,13 +98,43 @@ namespace ScreenTranslator.Views
             this.Top = targetY;
             this.Show();
         }
+        
+        private void EnsureInBounds()
+        {
+            // Re-adjust if content made it too large
+            if (!this.IsLoaded) return;
+            var helper = new WindowInteropHelper(this);
+            if (helper.Handle == IntPtr.Zero) return;
+            
+            var source = PresentationSource.FromVisual(this);
+            if (source == null) return;
+            
+            double dpiScaleX = source.CompositionTarget.TransformToDevice.M11;
+            double dpiScaleY = source.CompositionTarget.TransformToDevice.M22;
+            
+            int physX = (int)(this.Left * dpiScaleX);
+            int physY = (int)(this.Top * dpiScaleY);
+            var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(physX, physY));
+            
+            double screenBottomDIP = screen.Bounds.Bottom / dpiScaleY;
+            
+            this.UpdateLayout();
+            if (this.Top + this.ActualHeight > screenBottomDIP)
+            {
+                double newTop = screenBottomDIP - this.ActualHeight - 20;
+                if (newTop > screen.Bounds.Top / dpiScaleY)
+                {
+                    this.Top = newTop;
+                }
+            }
+        }
 
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             this.DragMove();
         }
 
-        private void CopyButton_Click(object sender, RoutedEventArgs e)
+        private async void CopyButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
@@ -112,6 +146,8 @@ namespace ScreenTranslator.Views
                 {
                     System.Windows.Clipboard.SetText(textToCopy);
                     BtnCopy.Content = "✓ コピー済";
+                    await System.Threading.Tasks.Task.Delay(2000);
+                    BtnCopy.Content = "📋 コピー";
                 }
             }
             catch (Exception ex)
@@ -139,9 +175,7 @@ namespace ScreenTranslator.Views
             {
                 _isManualResized = true;
                 this.SizeToContent = SizeToContent.Manual;
-                this.Width = this.ActualWidth;
-                this.Height = this.ActualHeight;
-                this.MaxHeight = double.PositiveInfinity;
+                ScrollTranslation.MaxHeight = double.PositiveInfinity;
             }
 
             double newWidth = this.Width + e.HorizontalChange;
@@ -152,5 +186,3 @@ namespace ScreenTranslator.Views
         }
     }
 }
-
-

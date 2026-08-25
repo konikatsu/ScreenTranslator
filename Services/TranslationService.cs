@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Drawing;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,7 +10,7 @@ namespace ScreenTranslator.Services
 {
     public class TranslationService
     {
-        private readonly HttpClient _httpClient = new HttpClient();
+        private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
         public async Task<string> TranslateToJapaneseAsync(string text, CancellationToken cancellationToken = default)
         {
@@ -33,19 +34,33 @@ namespace ScreenTranslator.Services
                 
                 string responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 
-                // Parse JSON array of arrays: [["translated text", "original text", ...]]
+                // Response can be either ["translated block"] OR [["trans line 1", "orig 1"], ["trans line 2", "orig 2"]]
                 using var doc = JsonDocument.Parse(responseBody);
                 var root = doc.RootElement;
-                if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+                
+                if (root.ValueKind == JsonValueKind.Array)
                 {
-                    var firstElement = root[0];
-                    if (firstElement.ValueKind == JsonValueKind.Array && firstElement.GetArrayLength() > 0)
+                    var sb = new StringBuilder();
+                    foreach (var element in root.EnumerateArray())
                     {
-                        var translatedText = firstElement[0].GetString();
-                        if (!string.IsNullOrEmpty(translatedText))
+                        if (element.ValueKind == JsonValueKind.String)
                         {
-                            return translatedText;
+                            // Flat array
+                            sb.Append(element.GetString());
                         }
+                        else if (element.ValueKind == JsonValueKind.Array && element.GetArrayLength() > 0)
+                        {
+                            // Nested array, first item is the translated text
+                            var innerElement = element[0];
+                            if (innerElement.ValueKind == JsonValueKind.String)
+                            {
+                                sb.Append(innerElement.GetString());
+                            }
+                        }
+                    }
+                    if (sb.Length > 0)
+                    {
+                        return sb.ToString();
                     }
                 }
                 
