@@ -15,3 +15,11 @@ out/
 *.log
 *.tmp
 *.cache
+
+# AI Review and Mentoring temp files
+codex_*.md
+mentoring_*.md
+claude_*.md
+prompt_*.txt
+*.diff
+real_codex_review.md
