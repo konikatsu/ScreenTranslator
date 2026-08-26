@@ -26,7 +26,7 @@
 - **`Program.cs` / `App.xaml.cs` / `OcrService.cs` の `File.AppendAllText` 全17箇所を `SafeLogger.Log` に置換。**
 
 ### `Services/SettingsManager.cs` — 暗号化設定（指摘1・6）
-- 保存先: `%AppData%\ScreenTranslator\settings.json`。
+- 保存先: `%LocalAppData%\ScreenTranslator\settings.json`。
 - スキーマ: `{ "EncryptedGeminiApiKey": "<base64>", "GeminiModel": "gemini-2.0-flash" }`
   - **モデル名は設定ファイルから読み込み、デフォルトは実在する `gemini-2.0-flash`**。ユーザーが `gemini-2.5-flash` 等に書き換え可能。コードにモデル名をハードコードしない。
 - APIキーは DPAPI（`ProtectedData.Protect/Unprotect`, `DataProtectionScope.CurrentUser`）で暗号化し、Base64で格納。
@@ -103,7 +103,7 @@
 | 3 | ログパス/秘匿 | `%LocalAppData%` + SafeLoggerで `AIza…`/URLキー/Base64 をマスク、全17箇所置換 |
 | 4 | レイヤ違反 | HotkeyServiceは登録結果を返すのみ。MessageBoxは App.xaml.cs |
 | 5 | 固定400x300 | `SizeToContent` 維持＋モード別Max制約＋Thumb初回ドラッグでManual切替 |
-| 6 | 設定保存 | `%AppData%` + DPAPI(CurrentUser) + tmp書込→`File.Replace`/`Move`、破損時 `.corrupt-*` 退避 |
+| 6 | 設定保存 | `%LocalAppData%` + DPAPI(CurrentUser) + tmp書込→`File.Replace`/`Move`、破損時 `.corrupt-*` 退避 |
 | 7 | キー送信 | `x-goog-api-key` ヘッダーのみ。URLにキーを含めない |
 | 8 | 多重起動/Esc | `_isProcessing` で全区間ガード、操作単位CTS、`TranslationWindow.Closed` でAPI中断 |
 
@@ -126,3 +126,4 @@
 - **メモリ**: キャンセル経路・例外経路含め `bitmap.Dispose()` が必ず通ること（`finally` で保証）。
 
 なお、プランモードのため今回はコード変更を行っていません。承認いただければ、このプランを `docs/設計書/AI解説機能_実装プラン_v9.md`（v8の後継）として反映し、上記順序で実装に着手します。
+

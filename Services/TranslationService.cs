@@ -44,7 +44,7 @@ namespace ScreenTranslator.Services
                     {
                         if (element.ValueKind == JsonValueKind.String)
                         {
-                            sb.Append(element.GetString());
+                            sb.AppendLine(element.GetString());
                         }
                         else if (element.ValueKind == JsonValueKind.Array && element.GetArrayLength() > 0)
                         {
@@ -65,6 +65,10 @@ namespace ScreenTranslator.Services
             }
             catch (OperationCanceledException)
             {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    return "(タイムアウト: 翻訳サーバーからの応答がありませんでした)";
+                }
                 throw;
             }
             catch (Exception ex)

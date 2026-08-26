@@ -116,7 +116,6 @@ namespace ScreenTranslator.Services
             catch (CryptographicException ex)
             {
                 SafeLogger.Log(ex, "DPAPI Decryption failed.");
-                BackupCorruptFile();
                 return null;
             }
             catch (Exception ex)
@@ -144,3 +143,4 @@ namespace ScreenTranslator.Services
         }
     }
 }
+

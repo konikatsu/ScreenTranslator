@@ -10,7 +10,7 @@ Extend ScreenTranslator with an AI-powered "What is this?" mode (Alt + W) for UI
 ### Security, Privacy & Settings Management
 - **Project Reference**: Add <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" /> to ScreenTranslator.csproj.
 - **SettingsManager.cs**: Handle encrypted settings with atomic saves and safe backups.
-  - **Storage Path**: %AppData%\ScreenTranslator\settings.json. JSON key: EncryptedGeminiApiKey.
+  - **Storage Path**: %LocalAppData%\ScreenTranslator\settings.json. JSON key: EncryptedGeminiApiKey.
   - **Encryption**: Encrypt/decrypt using DPAPI (ProtectedData.Protect, CurrentUser scope).
   - **Corruption Recovery**: If DPAPI decryption fails or JSON is malformed, rename the file to settings.json.corrupt-[yyyyMMddHHmmss] and return an empty default configuration.
   - **Atomic Save**: Write to a temporary file .tmp, then safely move/replace the target file (handling initial file creation properly since File.Replace fails if the target doesn't exist).
@@ -74,3 +74,4 @@ ull if OverlayWindow.Closed fires before Snipped (e.g., user hits Esc or makes a
 5. **Network/Security**: Force a timeout or 401 error; verify debug_startup.log and UI dialogs contain no raw keys.
 6. **Resizing**: Verify resizing via Thumb works infinitely (no max limits) and dragging works strictly on the header without conflicting with buttons.
 7. **Long Explanations**: Verify the ScrollViewer properly handles and scrolls massive AI responses.
+

@@ -10,7 +10,7 @@ Extend ScreenTranslator with an AI-powered "What is this?" mode (`Alt + W`) for 
 ### Security, Privacy & Settings Management
 - **Project Reference**: Add `<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />` to `ScreenTranslator.csproj`.
 - **SettingsManager.cs**: Handle encrypted settings with atomic saves and safe backups.
-  - **Storage Path**: `%AppData%\ScreenTranslator\settings.json`. JSON key: `EncryptedGeminiApiKey`.
+  - **Storage Path**: `%LocalAppData%\ScreenTranslator\settings.json`. JSON key: `EncryptedGeminiApiKey`.
   - **Encryption**: Encrypt/decrypt using DPAPI (`ProtectedData.Protect`, CurrentUser scope).
   - **Corruption Recovery**: If DPAPI decryption fails or JSON is malformed, rename the file to `settings.json.corrupt-[yyyyMMddHHmmss]` and return an empty default configuration.
   - **Atomic Save**: Write to a temporary file `.tmp`, then safely move/replace the target file.
@@ -77,3 +77,4 @@ Extend ScreenTranslator with an AI-powered "What is this?" mode (`Alt + W`) for 
 3. **Esc/Cancel Lifecycle**: Trigger `Alt + W`, press `Esc`, verify `Alt + W` works again immediately.
 4. **Memory Leak Check**: Ensure `bitmap.Dispose()` is called in the `finally` block of `App.xaml.cs`.
 5. **Coordinate Integrity**: Verify the popup window appears at the correct mouse coordinates after waiting for the TCS.
+

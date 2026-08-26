@@ -1,4 +1,4 @@
-# ScreenTranslator: AI Explanation Mode ("What is this?") Implementation Plan v4
+﻿# ScreenTranslator: AI Explanation Mode ("What is this?") Implementation Plan v4
 
 ## Goal
 Extend ScreenTranslator with an AI-powered "What is this?" mode (`Alt + W`) for UI and text explanation via Gemini API, incorporating enterprise-grade security, concurrency control, and robust error handling.
@@ -7,7 +7,7 @@ Extend ScreenTranslator with an AI-powered "What is this?" mode (`Alt + W`) for 
 
 > [!IMPORTANT]
 > **API Key Storage & Encryption**
-> - The Gemini API key will be saved to `%AppData%\ScreenTranslator\settings.json` under the key `EncryptedGeminiApiKey`.
+> - The Gemini API key will be saved to `%LocalAppData%\ScreenTranslator\settings.json` under the key `EncryptedGeminiApiKey`.
 > - It will be encrypted using Windows DPAPI (`ProtectedData.Protect`). A NuGet package reference for `System.Security.Cryptography.ProtectedData` will be added to the `.csproj`.
 > - On first use, the user will be prompted via a secure `SettingsWindow` to input the key.
 
@@ -78,3 +78,4 @@ Extend ScreenTranslator with an AI-powered "What is this?" mode (`Alt + W`) for 
 4. **Resizing**: Verify dragging the `Thumb` resizes the window and the scrollbar accommodates long AI text.
 5. **Network/Security**: Trigger a 401 or network timeout; verify the API key is NOT in `debug_startup.log`.
 6. **Hotkey Partial Failure**: Simulate a registered hotkey conflict; verify the app still runs with the working hotkeys.
+

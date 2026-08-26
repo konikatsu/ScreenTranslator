@@ -35,7 +35,7 @@ namespace ScreenTranslator
             DispatcherUnhandledException += (s, args) =>
             {
                 SafeLogger.Log($"[Dispatcher Unhandled] {args.Exception}");
-                MessageBox.Show($"予期せぬエラーが発生しました: {args.Exception.Message}", "Screen Translator エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                string safeMsg = SafeLogger.Sanitize(args.Exception.Message); MessageBox.Show($"予期せぬエラーが発生しました: {safeMsg}", "Screen Translator エラー", MessageBoxButton.OK, MessageBoxImage.Error);
                 args.Handled = true;
             };
 
@@ -62,7 +62,7 @@ namespace ScreenTranslator
             catch (Exception ex)
             {
                 SafeLogger.Log(ex, "[Startup Error]");
-                MessageBox.Show($"起動時エラー: {ex.Message}", "Screen Translator", MessageBoxButton.OK, MessageBoxImage.Error);
+                string safeEx = SafeLogger.Sanitize(ex.Message); MessageBox.Show($"起動時エラー: {safeEx}", "Screen Translator", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -244,3 +244,5 @@ namespace ScreenTranslator
         }
     }
 }
+
+
