@@ -20,6 +20,7 @@ namespace ScreenTranslator.Services
         private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
         private const uint MOD_ALT = 0x0001;
+        private const uint MOD_NOREPEAT = 0x4000;
         private const uint VK_Q = 0x51;
         private const uint VK_W = 0x57;
         
@@ -39,10 +40,10 @@ namespace ScreenTranslator.Services
             _source = new HwndSource(new HwndSourceParameters("dummy") { ParentWindow = new IntPtr(-3) }); // HWND_MESSAGE
             _source.AddHook(HwndHook);
 
-            bool translateOk = RegisterHotKey(_source.Handle, HOTKEY_ID_TRANSLATE, MOD_ALT, VK_Q);
+            bool translateOk = RegisterHotKey(_source.Handle, HOTKEY_ID_TRANSLATE, (MOD_ALT | MOD_NOREPEAT), VK_Q);
             if (translateOk) _registeredIds.Add(HOTKEY_ID_TRANSLATE);
 
-            bool explainOk = RegisterHotKey(_source.Handle, HOTKEY_ID_EXPLAIN, MOD_ALT, VK_W);
+            bool explainOk = RegisterHotKey(_source.Handle, HOTKEY_ID_EXPLAIN, (MOD_ALT | MOD_NOREPEAT), VK_W);
             if (explainOk) _registeredIds.Add(HOTKEY_ID_EXPLAIN);
 
             string? error = null;

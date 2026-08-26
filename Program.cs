@@ -20,8 +20,9 @@ public static class Program
         }
         catch (Exception ex)
         {
-            ScreenTranslator.Services.SafeLogger.Log(ex, "[Main Fatal Error]");
-            System.Windows.MessageBox.Show($"致命的なエラー: {ex.Message}", "Screen Translator", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            ScreenTranslator.Services.SafeLogger.Log(ex, "[Fatal Crash]");
+            string safeEx = ScreenTranslator.Services.SafeLogger.Sanitize(ex.Message);
+            System.Windows.MessageBox.Show($"致命的なエラー: {safeEx}", "Screen Translator", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
 }

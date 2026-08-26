@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using ScreenTranslator.Services;
 
@@ -29,7 +29,7 @@ namespace ScreenTranslator.Views
             try
             {
                 var settings = SettingsManager.LoadSettings();
-                string rawKey = PwdApiKey.Password;
+                string rawKey = PwdApiKey.Password.Trim();
                 
                 if (string.IsNullOrWhiteSpace(rawKey))
                 {
@@ -50,7 +50,8 @@ namespace ScreenTranslator.Views
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"設定の保存に失敗しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                string safeEx = SafeLogger.Sanitize(ex.Message);
+                System.Windows.MessageBox.Show($"設定の保存に失敗しました: {safeEx}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

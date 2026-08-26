@@ -47,12 +47,8 @@ public class OcrService : IDisposable
             // 1. Search for native DLLs (x64 / x86)
             string[] nativeSearchPaths = new[]
             {
-                exeDir != null ? Path.Combine(exeDir, arch) : "",
                 Path.Combine(baseDir, arch),
-                Path.Combine(curDir, arch),
-                $@"C:\dev\ScreenTranslator\publish\{arch}",
-                $@"C:\dev\ScreenTranslator\bin\Debug\net10.0-windows10.0.19041.0\{arch}",
-                $@"C:\dev\ScreenTranslator\{arch}"
+                Path.Combine(curDir, arch)
             };
 
             string? nativeDir = null;
@@ -88,18 +84,15 @@ public class OcrService : IDisposable
             }
 
             // 2. Search for tessdata directory
-            string[] tessSearchPaths = new[]
+            string[] tessdataSearchPaths = new[]
             {
                 exeDir != null ? Path.Combine(exeDir, "tessdata") : "",
                 Path.Combine(baseDir, "tessdata"),
-                Path.Combine(curDir, "tessdata"),
-                @"C:\dev\ScreenTranslator\publish\tessdata",
-                @"C:\dev\ScreenTranslator\tessdata",
-                @"C:\dev\ScreenTranslator\bin\Debug\net10.0-windows10.0.19041.0\tessdata"
+                Path.Combine(curDir, "tessdata")
             };
 
             string? tessdataPath = null;
-            foreach (var path in tessSearchPaths)
+            foreach (var path in tessdataSearchPaths)
             {
                 if (!string.IsNullOrEmpty(path) && Directory.Exists(path)
                     && File.Exists(Path.Combine(path, "eng.traineddata")))
